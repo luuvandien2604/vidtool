@@ -37,16 +37,20 @@ from videotool.editorial.composition import (FAMILIES_VERSION, assets_for_beat,
                                              history_from_compositions,
                                              semantic_asset_requirements)
 from videotool.editorial.feasibility import run_feasibility_pass
-from videotool.editorial.media import CatalogAcquirer
+from videotool.editorial.media import (AcquisitionTrace, MediaAcquisitionConfig,
+                                       MediaCandidate, MediaSearchPlan)
 from videotool.editorial.motion import build_motion_plan
 from videotool.editorial.strategies import (FUNCTION_CANDIDATES, STRATEGY_CATALOG,
                                              PlanningConfig, StrategyPlanner)
 from videotool.editorial.timeline import build_timeline
 from videotool.pipeline.fingerprints import STAGE_VERSIONS, stable_hash
+from videotool.providers.media import build_provider
 
 STAGES = ["semantic_beats", "episode_art_direction", "visual_strategy_plan",
-          "asset_requirements", "media_assets", "strategy_feasibility",
-          "visual_compositions", "visual_history", "motion_plan", "timeline"]
+          "asset_requirements", "media_search_plan", "media_candidates",
+          "media_assets", "media_acquisition_trace", "media_attribution",
+          "strategy_feasibility", "visual_compositions", "visual_history",
+          "motion_plan", "timeline"]
 
 
 @dataclass
@@ -69,7 +73,10 @@ class PipelineResult:
     preliminary_strategy_plan: list[SelectionRecord] = field(default_factory=list)
     feasibility: dict = field(default_factory=dict)
     requirements: list[AssetRequirement] = field(default_factory=list)
+    media_search_plan: list = field(default_factory=list)
+    media_candidates: dict = field(default_factory=dict)
     assets: list[MediaAsset] = field(default_factory=list)
+    acquisition_traces: list = field(default_factory=list)
     compositions: list[VisualComposition] = field(default_factory=list)
     history: VisualHistory | None = None
     motion: MotionPlan | None = None
@@ -80,7 +87,8 @@ class PipelineResult:
 
 class PipelineRunner:
     def __init__(self, store: ArtifactStore, mode: str = "final",
-                 force: bool = False, planner_config: PlanningConfig | None = None):
+                 force: bool = False, planner_config: PlanningConfig | None = None,
+                 media_config: MediaAcquisitionConfig | None = None):
         self.store = store
         self.mode = mode            # single source of truth for draft/final
         self.force = force
@@ -88,10 +96,30 @@ class PipelineRunner:
         self.beat_analyzer = HeuristicBeatAnalyzer()
         self.art_director = HeuristicArtDirector()
         self.planner = StrategyPlanner(self.planner_config)
+        self._media_config_override = media_config
         # per-run state
         self._meta: dict = {}
         self._statuses: dict = {}
         self._repairs: list[dict] = []
+        self._last_acquisition = None
+
+    # ---- media plumbing ---------------------------------------------------
+    def _media_config(self, ep: EpisodeInput) -> MediaAcquisitionConfig:
+        """Config resolution: explicit override wins; catalog rides along as
+        provider data for the fixture provider."""
+        cfg = self._media_config_override or MediaAcquisitionConfig()
+        if cfg.provider == "fixture" and ep.catalog:
+            # keep catalog isolated to the provider; never fingerprint-scattered
+            cfg = MediaAcquisitionConfig(**{**cfg.to_dict(),
+                                            "provider": "fixture"})
+        return cfg
+
+    def _build_media_provider(self, ep: EpisodeInput,
+                              cfg: MediaAcquisitionConfig):
+        if cfg.provider == "fixture":
+            return build_provider("fixture", catalog=ep.catalog)
+        return build_provider(cfg.provider, timeout_sec=cfg.timeout_sec,
+                              retries=cfg.retries, user_agent=cfg.user_agent)
 
     # ---- stage plumbing --------------------------------------------------
     def _load_meta(self, ep: EpisodeInput) -> dict:
@@ -145,6 +173,7 @@ class PipelineRunner:
         res = PipelineResult(episode_id=ep.episode_id,
                              manifest={"stages": {}, "repairs": []})
         self._meta, self._statuses, self._repairs = {}, {}, []
+        self._last_acquisition = None
 
         narration_payload = ep.narration.to_dict()
         planner_cfg = asdict(self.planner_config)
@@ -259,20 +288,172 @@ class PipelineRunner:
                 return False
             return all(a.asset_id for a in assets)
 
-        def compute_media():
-            acquirer = CatalogAcquirer(ep.catalog, mode=self.mode)
-            resolved = acquirer.acquire(res.requirements)
-            known = {r.requirement_id for r in res.requirements}
-            kept = [a for a in resolved
-                    if a.requirement_id in known or a.is_placeholder]
-            return [a.to_dict() for a in kept]
+        # 5a. media search plan (deterministic, semantic) ------------------------
+        from videotool.editorial.media import (LICENSE_POLICY_VERSION,
+                                               MEDIA_QUERY_VERSION,
+                                               MEDIA_RANKING_VERSION,
+                                               MEDIA_DOWNLOAD_VERSION,
+                                               ACQUISITION_SERVICE_VERSION)
+        from videotool.editorial.media import (MediaAcquisitionConfig,
+                                               MediaAcquisitionService,
+                                               MediaCache, plan_search,
+                                               search_candidates)
 
-        fp_media = stable_hash(STAGE_VERSIONS["media_assets"], ep.episode_id,
-                               reqs_hash, ep.catalog, self.mode)
+        def search_plan_ok(payload) -> bool:
+            known = {r.requirement_id for r in res.requirements}
+            try:
+                plans = [MediaSearchPlan.from_dict(p) for p in payload]
+            except Exception:
+                return False
+            return bool(plans) and all(
+                p.requirement_id in known and p.primary_query.strip()
+                and p.primary_query.lower() not in
+                ("historical photo", "war image", "documentary image")
+                for p in plans)
+
+        def compute_search_plan():
+            return [p.to_dict() for p in
+                    plan_search(res.requirements, res.beats)]
+
+        fp_search_plan = stable_hash(STAGE_VERSIONS["media_search_plan"],
+                                     ep.episode_id, reqs_hash, beats_hash,
+                                     MEDIA_QUERY_VERSION)
+        search_plan_payload = self._stage(ep, "media_search_plan", fp_search_plan,
+                                          compute_search_plan,
+                                          resume_valid=search_plan_ok)
+        res.media_search_plan = [MediaSearchPlan.from_dict(p)
+                                 for p in search_plan_payload]
+        search_plan_hash = stable_hash(search_plan_payload)
+
+        # 5b. candidate search (the ONLY network stage) ---------------------------
+        media_config = self._media_config(ep)
+        provider = self._build_media_provider(ep, media_config)
+
+        def candidates_ok(payload) -> bool:
+            try:
+                cand_map = payload["by_requirement"]
+                for items in cand_map.values():
+                    for c in items:
+                        MediaCandidate.from_dict(c)
+            except Exception:
+                return False
+            return True
+
+        def compute_candidates():
+            found = search_candidates(res.media_search_plan, provider,
+                                      media_config.max_candidates_per_query)
+            return {"provider": media_config.provider,
+                    "by_requirement": {rid: [c.to_dict() for c in cands]
+                                       for rid, cands in found.items()}}
+
+        fp_candidates = stable_hash(
+            STAGE_VERSIONS["media_candidates"], ep.episode_id,
+            search_plan_hash, media_config.provider, provider.provider_version,
+            media_config.max_candidates_per_query, media_config.timeout_sec,
+            media_config.retries, ep.catalog)
+        candidates_payload = self._stage(ep, "media_candidates", fp_candidates,
+                                         compute_candidates,
+                                         resume_valid=candidates_ok)
+        res.media_candidates = {
+            rid: [MediaCandidate.from_dict(c) for c in items]
+            for rid, items in candidates_payload["by_requirement"].items()}
+        candidates_hash = stable_hash(candidates_payload)
+
+        # 5c. media assets (rank -> license -> fetch -> validate -> cache) ---------
+        def media_ok(payload) -> bool:
+            try:
+                assets = [MediaAsset.from_dict(a) for a in payload]
+            except Exception:
+                return False
+            return all(a.asset_id for a in assets)
+
+        def compute_media():
+            cache = MediaCache(media_config.cache_dir
+                               or (self.store.root / "media_cache"))
+            service = MediaAcquisitionService(provider, cache, media_config)
+            outcome = service.acquire(res.requirements, res.media_search_plan,
+                                      res.media_candidates, mode=self.mode)
+            self._last_acquisition = outcome
+            return [a.to_dict() for a in outcome.assets]
+
+        fp_media = stable_hash(
+            STAGE_VERSIONS["media_assets"], ep.episode_id, candidates_hash,
+            MEDIA_RANKING_VERSION, LICENSE_POLICY_VERSION,
+            MEDIA_DOWNLOAD_VERSION, ACQUISITION_SERVICE_VERSION,
+            media_config.to_dict(), self.mode)
         media_payload = self._stage(ep, "media_assets", fp_media, compute_media,
                                     resume_valid=media_ok)
         res.assets = [MediaAsset.from_dict(a) for a in media_payload]
         media_hash = stable_hash(media_payload)
+
+        # 5d. acquisition trace ------------------------------------------------------
+        def trace_ok(payload) -> bool:
+            known = {r.requirement_id for r in res.requirements}
+            try:
+                traces = [AcquisitionTrace.from_dict(t) for t in payload]
+            except Exception:
+                return False
+            return bool(traces) and all(t.requirement_id in known for t in traces)
+
+        def compute_trace():
+            outcome = self._last_acquisition
+            if outcome is not None:
+                return [t.to_dict() for t in outcome.traces]
+            # assets resumed: rebuild a faithful trace from persisted state
+            plan_by_req = {p.requirement_id: p for p in res.media_search_plan}
+            asset_by_req = {a.requirement_id: a for a in res.assets}
+            rebuilt = []
+            for req in res.requirements:
+                plan = plan_by_req.get(req.requirement_id)
+                asset = asset_by_req.get(req.requirement_id)
+                rebuilt.append(AcquisitionTrace(
+                    requirement_id=req.requirement_id,
+                    provider=media_config.provider,
+                    queries_attempted=([plan.primary_query] +
+                                       list(plan.alternate_queries)
+                                       if plan else []),
+                    selected_candidate_id=(asset.candidate_id
+                                           if asset and not asset.is_placeholder
+                                           else None),
+                    unresolved_reason="" if asset is not None else "unresolved",
+                ).to_dict())
+            return rebuilt
+
+        fp_trace = stable_hash(STAGE_VERSIONS["media_acquisition_trace"],
+                               ep.episode_id, candidates_hash, media_hash)
+        trace_payload = self._stage(ep, "media_acquisition_trace", fp_trace,
+                                    compute_trace, resume_valid=trace_ok)
+        res.acquisition_traces = [AcquisitionTrace.from_dict(t)
+                                  for t in trace_payload]
+
+        # 5e. attribution manifest ---------------------------------------------------
+        def attribution_ok(payload) -> bool:
+            asset_ids = {a.asset_id for a in res.assets}
+            try:
+                entries = payload["assets"]
+            except Exception:
+                return False
+            return all(e["asset_id"] in asset_ids for e in entries)
+
+        def compute_attribution():
+            entries = []
+            for a in res.assets:
+                if a.is_placeholder:
+                    continue
+                entries.append({
+                    "asset_id": a.asset_id,
+                    "creator": a.attribution.get("creator", ""),
+                    "source": a.provider or "fixture",
+                    "source_page": a.source_page,
+                    "license": a.license_name or a.attribution.get("license_name", ""),
+                    "license_url": a.attribution.get("license_url", ""),
+                })
+            return {"assets": entries}
+
+        fp_attr = stable_hash(STAGE_VERSIONS["media_attribution"], ep.episode_id,
+                              media_hash)
+        self._stage(ep, "media_attribution", fp_attr, compute_attribution,
+                    resume_valid=attribution_ok)
 
         # 6. strategy feasibility (plan-of-record) --------------------------------
         def feasibility_ok(payload) -> bool:

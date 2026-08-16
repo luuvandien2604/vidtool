@@ -21,7 +21,11 @@ STAGE_VERSIONS: dict[str, int] = {
     "episode_art_direction": 1,
     "visual_strategy_plan": 2,    # 2: family_recency novelty direction fixed
     "asset_requirements": 2,      # 2: strength model replaces unused min_count
-    "media_assets": 1,
+    "media_search_plan": 1,       # Phase 2A: deterministic semantic queries
+    "media_candidates": 1,        # Phase 2A: provider search results
+    "media_assets": 2,            # 2: production acquisition (2A)
+    "media_acquisition_trace": 1,  # Phase 2A
+    "media_attribution": 1,       # Phase 2A
     "strategy_feasibility": 2,    # 2: all_of/any_of policy semantics
     "visual_compositions": 4,     # 4: signature derived after reading_order
     "visual_history": 4,          # 4: signature semantics changed

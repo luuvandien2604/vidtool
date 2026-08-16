@@ -6,3 +6,4 @@ __pycache__/
 # regenerable build outputs
 videotool-src.zip
 artifacts/
+media_cache/

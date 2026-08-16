@@ -27,13 +27,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("fixture", choices=sorted(FIXTURES))
     parser.add_argument("--mode", default="final", choices=["draft", "final"])
     parser.add_argument("--artifacts", default="artifacts")
+    parser.add_argument("--media-provider", default="fixture",
+                        choices=["fixture", "wikimedia"],
+                        help="media provider (default: deterministic fixture)")
     parser.add_argument("--force", action="store_true",
                         help="recompute every stage, ignoring cached artifacts")
     args = parser.parse_args(argv)
 
     data = FIXTURES[args.fixture]()
+    from videotool.editorial.media import MediaAcquisitionConfig
+    media_config = MediaAcquisitionConfig(provider=args.media_provider)
     runner = PipelineRunner(ArtifactStore(args.artifacts), mode=args.mode,
-                            force=args.force)
+                            force=args.force, media_config=media_config)
     result = runner.run(EpisodeInput(**data))
 
     for stage, info in result.manifest["stages"].items():

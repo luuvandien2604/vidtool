@@ -52,6 +52,21 @@ class MediaAsset:
     source_quality: float = 0.5
     is_placeholder: bool = False
     duplication_penalty: float = 0.0
+    # ---- Phase 2A provenance (spec sections 15, 34): never lost after
+    # download; attribution must survive into final artifacts.
+    candidate_id: str = ""
+    provider: str = ""
+    source_page: str = ""
+    media_url: str = ""
+    checksum: str = ""
+    width: int = 0
+    height: int = 0
+    license_name: str = ""
+    retrieval_ts: str = ""
+    attribution: dict = field(default_factory=dict)
+    score_components: dict = field(default_factory=dict)
+    score_penalties: dict = field(default_factory=dict)
+    selection_reason: str = ""
 
     def relevance_score(self) -> float:
         base = (self.entity_match * 0.30 + self.event_match * 0.15 +
@@ -67,6 +82,6 @@ class MediaAsset:
 
     @classmethod
     def from_dict(cls, d: dict) -> "MediaAsset":
-        d = dict(d)
+        d = {k: v for k, v in d.items() if k in cls.__dataclass_fields__}
         d.pop("relevance_score", None)
         return cls(**d)

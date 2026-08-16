@@ -14,7 +14,7 @@ motion/timeline validators. No rendering yet.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install pytest   # dev-only dep
-make test                                              # 185 tests
+make test                                              # 267 tests
 make run                                               # fixture -> artifacts/
 make dist        # source-only zip (no .venv / caches / artifacts)
 ```
@@ -61,10 +61,12 @@ Domain invariants enforced by tests:
 videotool/domain/      typed models (stdlib only)
 videotool/ai/          BeatAnalyzer / ArtDirectionGenerator interfaces + heuristics
 videotool/editorial/   strategy planner, feasibility pass, composition families,
-                       motion, timeline, media acquisition, validation
+                       motion, timeline, media acquisition (query planning,
+                       ranking, licensing, cache, validation), validation
+videotool/providers/   media providers: fixture (offline) + Wikimedia Commons
 videotool/pipeline/    stage runner with fingerprinted resume
 videotool/fixtures/    acceptance fixture (The Fall of the Berlin Wall)
-tests/                 unit + acceptance suite (185 tests)
+tests/                 unit + acceptance suite (267 tests, no network)
 docs/                  AUDIT.md, PHASE1_REPORT.md, PHASE11_HARDENING.md, example_trace.md
 docs/references/       golden reference video (motion language only)
 ```

@@ -1,0 +1,193 @@
+{
+  "_comment": "Sanitized, recorded-style Wikimedia Commons API responses (formatversion=2, generator=search + imageinfo). Used with a fake transport so tests never touch the network. Shapes mirror real API output.",
+  "Gunter Schabowski portrait": {
+    "query": {
+      "pages": [
+        {
+          "pageid": 100001,
+          "title": "File:Günter Schabowski (1989 press conference).jpg",
+          "imageinfo": [
+            {
+              "url": "https://upload.wikimedia.org/commons/a/ab/Schabowski_1989.jpg",
+              "descriptionurl": "https://commons.wikimedia.org/wiki/File:Schabowski_1989.jpg",
+              "thumburl": "https://upload.wikimedia.org/commons/a/ab/Schabowski_1989.jpg/320px.jpg",
+              "width": 1180,
+              "height": 1600,
+              "mime": "image/jpeg",
+              "extmetadata": {
+                "Artist": {
+                  "value": "Bundesarchiv, Photo 183-1989-1109-031"
+                },
+                "DateTimeOriginal": {
+                  "value": "9 November 1989"
+                },
+                "LicenseShortName": {
+                  "value": "CC BY-SA 3.0 de"
+                },
+                "LicenseUrl": {
+                  "value": "https://creativecommons.org/licenses/by-sa/3.0/de/deed.en"
+                },
+                "ImageDescription": {
+                  "value": "Günter Schabowski at the press conference, 9 November 1989"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "pageid": 100002,
+          "title": "File:Berlin skyline panorama 1989.jpg",
+          "imageinfo": [
+            {
+              "url": "https://upload.wikimedia.org/commons/9/9c/Berlin_skyline_1989.jpg",
+              "descriptionurl": "https://commons.wikimedia.org/wiki/File:Berlin_skyline_1989.jpg",
+              "width": 4000,
+              "height": 1200,
+              "mime": "image/jpeg",
+              "extmetadata": {
+                "Artist": {
+                  "value": "Unknown"
+                },
+                "DateTimeOriginal": {
+                  "value": "1989"
+                },
+                "LicenseShortName": {
+                  "value": "CC BY-SA 4.0"
+                },
+                "LicenseUrl": {
+                  "value": "https://creativecommons.org/licenses/by-sa/4.0/"
+                },
+                "ImageDescription": {
+                  "value": "Berlin skyline panorama, generic cityscape view from 1989"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "Berlin map": {
+    "query": {
+      "pages": [
+        {
+          "pageid": 100003,
+          "title": "File:Berlin wall map 1989.png",
+          "imageinfo": [
+            {
+              "url": "https://upload.wikimedia.org/commons/2/2f/Berlin_wall_map.png",
+              "descriptionurl": "https://commons.wikimedia.org/wiki/File:Berlin_wall_map.png",
+              "width": 1600,
+              "height": 1300,
+              "mime": "image/png",
+              "extmetadata": {
+                "Artist": {
+                  "value": "Cartography Office"
+                },
+                "DateTimeOriginal": {
+                  "value": "1989"
+                },
+                "LicenseShortName": {
+                  "value": "CC0"
+                },
+                "LicenseUrl": {
+                  "value": "https://creativecommons.org/publicdomain/zero/1.0/"
+                },
+                "ImageDescription": {
+                  "value": "Map of divided Berlin, 1989, showing the wall sector boundaries"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "travel regulation document": {
+    "query": {
+      "pages": [
+        {
+          "pageid": 100004,
+          "title": "File:Reisegesetz draft document November 1989.jpg",
+          "imageinfo": [
+            {
+              "url": "https://upload.wikimedia.org/commons/4/4d/Reisegesetz_1989.jpg",
+              "descriptionurl": "https://commons.wikimedia.org/wiki/File:Reisegesetz_1989.jpg",
+              "width": 1400,
+              "height": 1900,
+              "mime": "image/jpeg",
+              "extmetadata": {
+                "Artist": {
+                  "value": "GDR Ministry Council"
+                },
+                "DateTimeOriginal": {
+                  "value": "1989-11-09"
+                },
+                "LicenseShortName": {
+                  "value": "Public domain"
+                },
+                "ImageDescription": {
+                  "value": "Draft of the East German travel regulation document, November 1989"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "noncommercial photo": {
+    "query": {
+      "pages": [
+        {
+          "pageid": 100006,
+          "title": "File:NC licensed photo.jpg",
+          "imageinfo": [
+            {
+              "url": "https://upload.wikimedia.org/commons/1/1f/NC_photo.jpg",
+              "descriptionurl": "https://commons.wikimedia.org/wiki/File:NC_photo.jpg",
+              "width": 2000,
+              "height": 1500,
+              "mime": "image/jpeg",
+              "extmetadata": {
+                "Artist": {
+                  "value": "Someone"
+                },
+                "LicenseShortName": {
+                  "value": "CC BY-NC-SA 4.0"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "unlicensed": {
+    "query": {
+      "pages": [
+        {
+          "pageid": 100005,
+          "title": "File:Some photo without license info.jpg",
+          "imageinfo": [
+            {
+              "url": "https://upload.wikimedia.org/commons/0/0f/Unknown_photo.jpg",
+              "descriptionurl": "https://commons.wikimedia.org/wiki/File:Unknown_photo.jpg",
+              "width": 2000,
+              "height": 1500,
+              "mime": "image/jpeg",
+              "extmetadata": {
+                "Artist": {
+                  "value": "Unknown"
+                },
+                "LicenseShortName": {
+                  "value": ""
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
