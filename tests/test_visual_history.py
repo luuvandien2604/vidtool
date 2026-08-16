@@ -55,17 +55,35 @@ def test_signature_is_deterministic():
     assert derive_signature(c) == derive_signature(c)
 
 
-def test_family_recency_decreases_as_family_repeats():
+def test_family_recency_direction_is_correct():
+    """recent use = LOW novelty, older use = higher, unseen = 1.0.
+
+    (Phase 1.2.1 regression: this used to be inverted, and an old test
+    locked the wrong behaviour.)
+    """
     h = VisualHistory(max_window=10)
-    assert h.family_recency("document_evidence") == 1.0
+    assert h.family_recency("document_evidence") == 1.0  # unseen = novel
     h.record(HistoryEntry(beat_id="b1", visual_family="document_evidence",
                           strategy="s", composition_signature="sig1"))
-    recent = h.family_recency("document_evidence")
+    just_used = h.family_recency("document_evidence")
     h.record(HistoryEntry(beat_id="b2", visual_family="geographic_map",
                           strategy="s", composition_signature="sig2"))
-    older = h.family_recency("document_evidence")
-    assert recent < 1.0
-    assert older < recent
+    one_back = h.family_recency("document_evidence")
+    h.record(HistoryEntry(beat_id="b3", visual_family="causal_network",
+                          strategy="s", composition_signature="sig3"))
+    h.record(HistoryEntry(beat_id="b4", visual_family="chronological_timeline",
+                          strategy="s", composition_signature="sig4"))
+    four_back = h.family_recency("document_evidence")
+    assert just_used < one_back < four_back
+    assert 0.0 < just_used < 0.2
+
+
+def test_signature_recency_direction_is_correct():
+    h = VisualHistory(max_window=8)
+    h.record(HistoryEntry(beat_id="b1", visual_family="f", strategy="s",
+                          composition_signature="sig_x"))
+    assert h.signature_recency("sig_x") < 0.2
+    assert h.signature_recency("sig_other") == 1.0
 
 
 def test_family_streak_tracking():

@@ -286,7 +286,8 @@ class PipelineRunner:
         def compute_feasibility():
             complete = self._repair_strategy_records(res.preliminary_strategy_plan,
                                                      res.beats)
-            result = run_feasibility_pass(complete, res.beats, res.assets,
+            result = run_feasibility_pass(complete, res.beats, res.requirements,
+                                          res.assets,
                                           self.planner_config.max_family_streak)
             return {"adjustments": result.adjustments,
                     "records": [r.to_dict() for r in result.records]}

@@ -1,54 +1,92 @@
-"""Strategy feasibility pass (Phase 1.1, review item 3).
+"""Strategy feasibility pass (Phase 1.1, hardened in Phase 1.2.1).
 
 Order of truth: strategy INTENT is planned before media acquisition (novelty
 and storytelling are decided on meaning), then this pass re-checks each
 selection against the assets that ACTUALLY resolved and switches to the best
 feasible candidate when required assets are missing. The plan-of-record for
 composition is the adjusted plan, persisted with reasons.
+
+Phase 1.2.1: asset needs use an all_of/any_of POLICY, not a set (a set
+silently meant AND - e.g. a strategy promising "one strong archival frame"
+was declared infeasible unless portrait+photo+map+document ALL resolved).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from videotool.domain.assets import MediaAsset
+from videotool.domain.assets import AssetRequirement, MediaAsset
 from videotool.domain.semantic_beat import SemanticBeat
 from videotool.domain.strategy import SelectionRecord
 from videotool.editorial.strategies import STRATEGY_CATALOG
 
-# asset kinds each strategy genuinely needs to deliver its editorial promise.
-# strategies absent from this table degrade gracefully without assets.
-STRATEGY_ASSET_NEEDS: dict[str, set[str]] = {
-    "archival_portrait": {"portrait", "photo"},
-    "portrait_plus_document": {"portrait", "photo", "document"},
-    "portrait_plus_location": {"portrait", "photo"},
-    "portrait_plus_quote": {"portrait", "photo"},
-    "full_frame_archival": {"portrait", "photo", "map", "document"},
-    "silhouette_to_archive_reveal": {"portrait", "photo"},
-    "single_document_focus": {"document"},
-    "document_stack": {"document"},
-    "document_plus_quote": {"document"},
-    "clip_plus_annotation": {"document", "portrait", "photo"},
-    "region_map": {"map"},
-    "route_map": {"map"},
-    "map_plus_archival": {"map", "photo"},
-    "migration_flow_map": {"map"},
+
+@dataclass(frozen=True)
+class StrategyAssetPolicy:
+    """What a strategy genuinely needs to deliver its editorial promise.
+
+    all_of: every kind must resolve (kind equivalence applies).
+    any_of: at least one must resolve. Empty policy = degrades gracefully.
+    """
+    all_of: tuple[str, ...] = ()
+    any_of: tuple[str, ...] = ()
+
+    def declares(self) -> bool:
+        return bool(self.all_of or self.any_of)
+
+
+# asset policies per strategy; strategies absent from this table degrade
+# gracefully without assets.
+STRATEGY_ASSET_NEEDS: dict[str, StrategyAssetPolicy] = {
+    "archival_portrait": StrategyAssetPolicy(any_of=("portrait", "photo")),
+    "portrait_plus_document": StrategyAssetPolicy(all_of=("document",),
+                                                  any_of=("portrait", "photo")),
+    "portrait_plus_location": StrategyAssetPolicy(any_of=("portrait", "photo")),
+    "portrait_plus_quote": StrategyAssetPolicy(any_of=("portrait", "photo")),
+    "full_frame_archival": StrategyAssetPolicy(any_of=("photo", "portrait",
+                                                       "document", "map")),
+    "silhouette_to_archive_reveal": StrategyAssetPolicy(any_of=("portrait", "photo")),
+    "single_document_focus": StrategyAssetPolicy(all_of=("document",)),
+    "document_stack": StrategyAssetPolicy(all_of=("document",)),
+    "document_plus_quote": StrategyAssetPolicy(all_of=("document",)),
+    "clip_plus_annotation": StrategyAssetPolicy(any_of=("document", "photo",
+                                                        "portrait")),
+    "region_map": StrategyAssetPolicy(all_of=("map",)),
+    "route_map": StrategyAssetPolicy(all_of=("map",)),
+    "map_plus_archival": StrategyAssetPolicy(all_of=("map",),
+                                              any_of=("photo", "portrait")),
+    "migration_flow_map": StrategyAssetPolicy(all_of=("map",)),
 }
 
 # kinds that can substitute for each other in a pinch
 KIND_EQUIV = {"portrait": {"portrait", "photo"}, "photo": {"photo", "portrait"}}
-_KIND_EQUIV = KIND_EQUIV
 
 
 def _kinds_available(assets: list[MediaAsset]) -> set[str]:
     return {a.kind for a in assets if not a.is_placeholder}
 
 
+def _satisfied(kind: str, available_kinds: set[str]) -> bool:
+    options = KIND_EQUIV.get(kind, {kind})
+    return bool(options & available_kinds)
+
+
+def policy_needs_kind(strategy_id: str, kind: str) -> bool:
+    """True when the strategy's declared promise includes this kind."""
+    policy = STRATEGY_ASSET_NEEDS.get(strategy_id)
+    if policy is None:
+        return False
+    return kind in policy.all_of or kind in policy.any_of
+
+
 def strategy_is_feasible(strategy_id: str, available_kinds: set[str]) -> bool:
-    needs = STRATEGY_ASSET_NEEDS.get(strategy_id, set())
-    for need in needs:
-        options = _KIND_EQUIV.get(need, {need})
-        if not options & available_kinds:
-            return False
+    policy = STRATEGY_ASSET_NEEDS.get(strategy_id)
+    if policy is None or not policy.declares():
+        return True
+    if not all(_satisfied(k, available_kinds) for k in policy.all_of):
+        return False
+    if policy.any_of and not any(_satisfied(k, available_kinds)
+                                 for k in policy.any_of):
+        return False
     return True
 
 
@@ -69,6 +107,7 @@ def _streak_safe(families: list[str], max_streak: int) -> bool:
 
 def run_feasibility_pass(records: list[SelectionRecord],
                          beats: list[SemanticBeat],
+                         requirements: list[AssetRequirement],
                          assets: list[MediaAsset],
                          max_family_streak: int = 2) -> FeasibilityResult:
     """Adjust strategy selections to what the acquired media can deliver.
@@ -78,13 +117,15 @@ def run_feasibility_pass(records: list[SelectionRecord],
     limit; otherwise the original strategy is kept and its family degrades
     gracefully - the preliminary plan already satisfies the streak, so
     keeping it can never break the constraint.
+
+    Beat grouping uses the requirements' own beat_id (never parsed from the
+    requirement id - ids are opaque).
     """
+    beat_of_requirement = {r.requirement_id: r.beat_id for r in requirements}
     assets_by_beat: dict[str, list[MediaAsset]] = {}
     for a in assets:
-        if a.requirement_id:
-            # requirement ids look like req_<beat_id>_<kind>
-            parts = a.requirement_id.split("_")
-            beat_id = "_".join(parts[1:3])
+        beat_id = beat_of_requirement.get(a.requirement_id) if a.requirement_id else None
+        if beat_id:
             assets_by_beat.setdefault(beat_id, []).append(a)
 
     original_families = [r.visual_family for r in records]

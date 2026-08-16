@@ -285,6 +285,6 @@ def test_degraded_beats_are_marked_not_hidden(berlin_run):
 def test_asset_needs_table_covers_all_asset_kinds():
     from videotool.editorial.feasibility import STRATEGY_ASSET_NEEDS
     from videotool.editorial.strategies import STRATEGY_CATALOG
-    for strategy_id, needs in STRATEGY_ASSET_NEEDS.items():
+    for strategy_id, policy in STRATEGY_ASSET_NEEDS.items():
         assert strategy_id in STRATEGY_CATALOG, f"unknown strategy {strategy_id}"
-        assert needs, "table entries must declare real needs"
+        assert policy.declares(), "table entries must declare real needs"

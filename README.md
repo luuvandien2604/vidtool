@@ -14,7 +14,7 @@ motion/timeline validators. No rendering yet.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install pytest   # dev-only dep
-make test                                              # 151 tests
+make test                                              # 165 tests
 make run                                               # fixture -> artifacts/
 make dist        # source-only zip (no .venv / caches / artifacts)
 ```

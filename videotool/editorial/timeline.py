@@ -49,10 +49,24 @@ def build_timeline(episode_id: str, narration: Narration,
                    beats: list[SemanticBeat],
                    compositions: list[VisualComposition],
                    motion: MotionPlan) -> dict:
+    """Compose the resolved timeline.
+
+    Transitions are DATA of the motion plan / timeline - this function must
+    never mutate VisualComposition (Phase 1.2.1: post-artifact mutation made
+    fresh and resumed runs diverge in memory).
+    """
     comp_by_beat = {c.beat_id: c for c in compositions}
     segments = []
-    for beat in beats:
+    for index, beat in enumerate(beats):
         comp = comp_by_beat.get(beat.beat_id)
+        transition_in = next(
+            (t.category.value for t in motion.transitions
+             if t.to_beat == beat.beat_id), None)
+        if transition_in is None:
+            transition_in = "CUT_IN" if index == 0 else "CONTINUATION"
+        transition_out = next(
+            (t.category.value for t in motion.transitions
+             if t.from_beat == beat.beat_id), None)
         segments.append({
             "beat_id": beat.beat_id,
             "composition_id": comp.composition_id if comp else None,
@@ -61,14 +75,9 @@ def build_timeline(episode_id: str, narration: Narration,
             "strategy": comp.strategy if comp else None,
             "start_sec": beat.start_sec,
             "end_sec": beat.end_sec,
+            "transition_in": transition_in,
+            "transition_out": transition_out,
         })
-        if comp:
-            comp.transition_in = next(
-                (t.category.value for t in motion.transitions
-                 if t.to_beat == beat.beat_id), "CUT_IN" if beat is beats[0] else "CONTINUATION")
-            comp.transition_out = next(
-                (t.category.value for t in motion.transitions
-                 if t.from_beat == beat.beat_id), "CONTINUATION")
 
     return {
         "episode_id": episode_id,

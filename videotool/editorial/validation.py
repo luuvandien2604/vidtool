@@ -232,7 +232,8 @@ def validate_media_completeness(beats, requirements, assets, records,
     (the planner routed around the gap). Draft mode never gates.
     """
     from videotool.domain.assets import REQUIRED
-    from videotool.editorial.feasibility import KIND_EQUIV, STRATEGY_ASSET_NEEDS
+    from videotool.editorial.feasibility import (KIND_EQUIV, STRATEGY_ASSET_NEEDS,
+                                                 policy_needs_kind)
     report = ValidationReport()
     if mode != "final":
         placeholders = sum(1 for a in assets if getattr(a, "is_placeholder", False))
@@ -257,12 +258,9 @@ def validate_media_completeness(beats, requirements, assets, records,
         if options & kinds:
             continue  # satisfied by an equivalent kind
         rec = rec_by_beat.get(req.beat_id)
-        needs = STRATEGY_ASSET_NEEDS.get(rec.selected_strategy, set()) if rec else set()
-        if not (needs & options) and needs:
+        needs_it = bool(rec) and policy_needs_kind(rec.selected_strategy, req.kind)
+        if not needs_it:
             continue  # planner routed around the missing kind entirely
-        if not needs:
-            # strategy declares no hard asset promise: requirement waived
-            continue
         report.error(
             f"{req.beat_id}: REQUIRED {req.kind} asset unresolved "
             f"('{req.description}') and plan-of-record strategy "

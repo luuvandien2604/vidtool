@@ -17,14 +17,20 @@ def derive_signature(comp: VisualComposition) -> str:
     Derived from family, layer-type multiset, dominant (hero) layer quadrant,
     reading direction, relationship graph shape and hero asset TYPE - never
     the asset id itself, so same-layout/different-photo still collides.
+
+    TEXTURE layers are excluded on purpose: paper grain is global brand
+    styling, not composition geometry. The signature must therefore be
+    identical whether it is derived before or after a texture layer is
+    attached, or after any mirror transform.
     """
     def quadrant(layer) -> str:
         cx = layer.x + layer.width / 2
         cy = layer.y + layer.height / 2
         return f"{int(cy < 0.5)}{int(cx < 0.5)}"  # row-major quadrant 00..11
 
+    layers = [l for l in comp.layers if l.type != LayerType.TEXTURE]
     type_counts: dict[str, int] = {}
-    for layer in comp.layers:
+    for layer in layers:
         type_counts[layer.type.value] = type_counts.get(layer.type.value, 0) + 1
     types = ",".join(f"{k}x{v}" for k, v in sorted(type_counts.items()))
 
@@ -33,7 +39,7 @@ def derive_signature(comp: VisualComposition) -> str:
 
     # reading direction from reading_order hero -> last positions
     direction = "none"
-    if comp.reading_order and len(comp.layers) > 1:
+    if comp.reading_order and len(layers) > 1:
         first = comp.layer_by_id(comp.reading_order[0])
         last = comp.layer_by_id(comp.reading_order[-1])
         if first and last:
@@ -117,16 +123,21 @@ class VisualHistory:
         return any(e.composition_signature == signature for e in self.recent())
 
     def family_recency(self, family: str) -> float:
-        """0.0 = family is the most recent thing on screen, 1.0 = unseen."""
-        for back, entry in enumerate(reversed(self.entries), start=1):
+        """Novelty of using this family now.
+
+        1.0 = unseen in the recent window (fully novel); approaches 0.0 the
+        more recently the family was on screen (back=1 -> 1/max_window).
+        """
+        for back, entry in enumerate(reversed(self.recent()), start=1):
             if entry.visual_family == family:
-                return max(0.0, 1.0 - back / max(1, self.max_window))
+                return round(min(1.0, back / self.max_window), 4)
         return 1.0
 
     def signature_recency(self, signature: str) -> float:
-        for back, entry in enumerate(reversed(self.entries), start=1):
+        """Same scale as family_recency: 1.0 unseen, low = just used."""
+        for back, entry in enumerate(reversed(self.recent()), start=1):
             if entry.composition_signature == signature:
-                return max(0.0, 1.0 - back / max(1, self.max_window))
+                return round(min(1.0, back / self.max_window), 4)
         return 1.0
 
     def dominant_asset_recent(self, asset_id: str) -> bool:
