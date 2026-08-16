@@ -13,6 +13,7 @@ from videotool.artifacts import ArtifactStore
 from videotool.domain.assets import AssetRequirement, MediaAsset
 from videotool.domain.composition import (CompositionLayer, LayerType,
                                           MotionStyle, VisualComposition)
+from videotool.domain.semantic_beat import SemanticBeat, SemanticFunction
 from videotool.editorial.composition import assets_for_beat
 from videotool.domain.visual_history import derive_signature
 from videotool.fixtures.berlin_wall import load_episode
@@ -181,3 +182,88 @@ def test_texture_only_composition_has_no_hero():
         exit=MotionStyle.DISSOLVE))
     sig = derive_signature(comp)
     assert "hero=none" in sig
+
+
+# ---- signature lifecycle: stored == derived from FINAL state ---------------
+
+def _sig_ctx(family_id, fn):
+    from videotool.domain.art_direction import EpisodeArtDirection
+    from videotool.editorial.composition.base import CompositionContext
+    from videotool.editorial.strategies import STRATEGY_CATALOG
+
+    beat = SemanticBeat(beat_id="beat_0001", start_sec=0.0, end_sec=6.0,
+                        narration_text="A document was found in the archive.",
+                        word_start=0, word_end=6, semantic_function=fn,
+                        visual_intent="t", entities=["Berlin Wall"],
+                        locations=["Berlin"], dates=["1989"],
+                        objects=["document"], relationships=["cause"])
+    art = EpisodeArtDirection(
+        episode_id="ep", subject="T", visual_motifs=["paper"],
+        archival_language=["newsprint"], geometry=["frames"],
+        typography_character=["editorial"],
+        accent={"primary": "r", "warning": "r", "neutral": "k"},
+        motion_character=["tactile"], forbidden_patterns=[])
+    strategy = next(s for s in STRATEGY_CATALOG.values()
+                    if s.visual_family == family_id)
+    assets = [MediaAsset(asset_id=f"archive:{k}:{i}",
+                         requirement_id=f"req_{k}",
+                         description=f"{k}", kind=k, entity_match=1.0)
+              for i, k in enumerate(("photo", "document", "map", "portrait"))]
+    return CompositionContext(beat=beat, strategy=strategy, art_direction=art,
+                              assets=assets, episode_id="ep")
+
+
+_SIG_FAMILY_CASES = [
+    ("archival_subject", SemanticFunction.CHARACTER_INTRODUCTION),
+    ("document_evidence", SemanticFunction.EVIDENCE),
+    ("geographic_map", SemanticFunction.LOCATION_INTRODUCTION),
+    ("chronological_timeline", SemanticFunction.CHRONOLOGY),
+    ("causal_network", SemanticFunction.CAUSAL_EXPLANATION),
+    ("full_frame_cinematic", SemanticFunction.ATMOSPHERE),
+]
+
+
+@pytest.mark.parametrize("family_id,fn", _SIG_FAMILY_CASES,
+                         ids=[f[0] for f in _SIG_FAMILY_CASES])
+def test_stored_signature_describes_final_composition(family_id, fn):
+    """The stored novelty_signature must equal derive_signature() of the
+    FINISHED composition (signature is now derived after reading_order
+    staggering - Phase 1.2.1 final patch)."""
+    from videotool.editorial.composition import FAMILIES
+
+    ctx = _sig_ctx(family_id, fn)
+    comp = FAMILIES[family_id].compose(ctx)
+    assert comp.reading_order, "staggering must generate a reading_order"
+    assert comp.novelty_signature == derive_signature(comp), (
+        f"{family_id}: stored signature was derived before the composition "
+        f"reached its final structural state")
+
+
+@pytest.mark.parametrize("family_id,fn", _SIG_FAMILY_CASES,
+                         ids=[f[0] for f in _SIG_FAMILY_CASES])
+def test_mirrored_variant_signature_describes_final_composition(family_id, fn):
+    """Odd variants are mirrored after compose(); their signature must be
+    re-derived from the mirrored final state too."""
+    from videotool.editorial.composition import FAMILIES
+    from videotool.editorial.composition.base import (
+        compose_with_distinct_signature)
+
+    # force the search past variant 0 by pre-seeding its signature
+    ctx = _sig_ctx(family_id, fn)
+    first = FAMILIES[family_id].compose(_sig_ctx(family_id, fn))
+    comp = compose_with_distinct_signature(
+        FAMILIES[family_id], _sig_ctx(family_id, fn), {first.novelty_signature})
+    assert comp.novelty_signature not in (first.novelty_signature,)
+    assert comp.novelty_signature == derive_signature(comp)
+    assert comp.reading_order
+
+
+def test_fallback_composition_signature_matches_final_state():
+    from videotool.editorial.validation import deterministic_fallback_composition
+    beat = SemanticBeat(beat_id="beat_0001", start_sec=0.0, end_sec=5.0,
+                        narration_text="t", word_start=0, word_end=1,
+                        semantic_function=SemanticFunction.EVIDENCE,
+                        visual_intent="t")
+    comp = deterministic_fallback_composition(beat, 0, [])
+    assert comp.reading_order
+    assert comp.novelty_signature == derive_signature(comp)

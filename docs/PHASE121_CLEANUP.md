@@ -100,3 +100,23 @@ new:      tests/test_phase121_cleanup.py          (17 regression tests)
 
 New tests: `tests/test_phase121_patch.py` (7 tests, including the
 old-version upgrade scenario and the opaque-id end-to-end flow).
+
+## Signature lifecycle patch (final lock before Phase 2)
+
+`_finish()` used to derive `novelty_signature` BEFORE `_stagger_entrances()`
+— but staggering is what generates `reading_order`, which the signature's
+LR/TB/BT direction component reads. Stored signatures therefore described a
+pre-lifecycle snapshot (direction frozen at `none`) and could differ from
+`derive_signature()` recomputed on the finished composition; odd variants
+were signed at yet another point in the lifecycle. Fixed by deriving the
+signature LAST (after mirror, duration, staggering, texture — texture is
+ignored by `derive_signature` anyway), in both `_finish()` and the odd-
+variant path of `compose_with_distinct_signature()`. The deterministic
+fallback composition now also carries a `reading_order`.
+
+Versions bumped: `FAMILIES_VERSION 2→3`, `visual_compositions 3→4`,
+`visual_history 3→4`. New invariant tests: for all six families, even and
+mirrored variants, `comp.novelty_signature == derive_signature(comp)` on the
+finished object and `reading_order` is non-empty.
+
+Suite: **185 tests passed**.

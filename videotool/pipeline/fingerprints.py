@@ -23,8 +23,8 @@ STAGE_VERSIONS: dict[str, int] = {
     "asset_requirements": 2,      # 2: strength model replaces unused min_count
     "media_assets": 1,
     "strategy_feasibility": 2,    # 2: all_of/any_of policy semantics
-    "visual_compositions": 3,     # 3: signature ignores TEXTURE layers
-    "visual_history": 3,          # 3: structural signature semantics changed
+    "visual_compositions": 4,     # 4: signature derived after reading_order
+    "visual_history": 4,          # 4: signature semantics changed
     "motion_plan": 1,
     "timeline": 2,                # 2: transitions moved onto segments; no mutation
 }

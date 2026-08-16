@@ -74,10 +74,14 @@ class CompositionFamily:
                 mirror: bool = False) -> VisualComposition:
         if mirror:
             _mirror_composition(comp)
-        comp.novelty_signature = derive_signature(comp)
         comp.duration_sec = ctx.beat.duration_sec
         _stagger_entrances(comp)
         _add_texture_if_fits(ctx, comp)
+        # The signature must always describe the FINAL structural state:
+        # staggering generates reading_order (used for the LR/TB/BT
+        # direction component), so deriving any earlier would freeze a
+        # pre-lifecycle snapshot that differs from the finished composition.
+        comp.novelty_signature = derive_signature(comp)
         return comp
 
 
@@ -129,9 +133,11 @@ def compose_with_distinct_signature(family: CompositionFamily,
         comp = family.compose(ctx)
         if variant % 2 == 1:
             # odd variants mirror the arrangement: doubles structural space
+            # (signature re-derived AFTER the transform, same lifecycle rule
+            # as _finish)
             _mirror_composition(comp)
-            comp.novelty_signature = derive_signature(comp)
             _stagger_entrances(comp)
+            comp.novelty_signature = derive_signature(comp)
         last = comp
         if comp.novelty_signature not in used_signatures:
             return comp

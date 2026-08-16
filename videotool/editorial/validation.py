@@ -185,6 +185,7 @@ def deterministic_fallback_composition(beat: SemanticBeat, index: int,
         entrance=MotionStyle.UNDERLINE_REVEAL, exit=MotionStyle.SLIDE_OUT,
         enter_at=0.4, reason="Fallback metadata strip"))
     comp.focus_target = f"{cid}_hero"
+    comp.reading_order = [f"{cid}_hero", f"{cid}_meta"]
     from videotool.domain.visual_history import derive_signature
     comp.novelty_signature = derive_signature(comp)
     return comp
