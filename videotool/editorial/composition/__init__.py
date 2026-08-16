@@ -29,7 +29,7 @@ FAMILIES: dict[str, CompositionFamily] = {
 }
 
 # bump when any family's arrangement logic changes (part of stage fingerprints)
-FAMILIES_VERSION = 1
+FAMILIES_VERSION = 2  # 2: signature semantics (texture-independent) changed
 
 __all__ = [
     "FAMILIES", "CompositionContext", "CompositionFamily",
@@ -92,9 +92,13 @@ def semantic_asset_requirements(beats: list[SemanticBeat]) -> list[AssetRequirem
     return reqs
 
 
-def assets_for_beat(assets: list[MediaAsset], beat_id: str) -> list[MediaAsset]:
-    return [a for a in assets if a.requirement_id and
-            a.requirement_id.startswith(f"req_{beat_id}_")]
+def assets_for_beat(assets: list[MediaAsset],
+                    requirements: list[AssetRequirement],
+                    beat_id: str) -> list[MediaAsset]:
+    """Assets resolved for one beat. Requirement ids are OPAQUE: grouping
+    goes through the requirements' own beat_id, never id parsing."""
+    req_ids = {r.requirement_id for r in requirements if r.beat_id == beat_id}
+    return [a for a in assets if a.requirement_id in req_ids]
 
 
 def history_from_compositions(compositions: list[VisualComposition]) -> VisualHistory:

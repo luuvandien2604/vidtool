@@ -1,7 +1,8 @@
 # Phase 1.2.1 — Cleanup (external review follow-up)
 
-Date: 2026-08-17 · Suite: **165 tests passed**. Five fixes, no new features,
-no renderer. All five issues were confirmed against the source before fixing.
+Date: 2026-08-17 · Suite: **172 tests passed**. Five fixes + final patch, no
+new features, no renderer. All issues were confirmed against the source
+before fixing.
 
 ## 1. `family_recency()` was inverted (blocker)
 
@@ -72,3 +73,30 @@ fixed:    tests/test_visual_history.py            (un-locked the inverted
           behaviour)
 new:      tests/test_phase121_cleanup.py          (17 regression tests)
 ```
+
+## Final patch (second review round)
+
+1. **Stage versions bumped for every semantics change** — the original 1.2.1
+   commit changed computation without bumping `STAGE_VERSIONS`, so artifacts
+   written by the old (buggy) code could resume through the new code with
+   identical inputs, bypassing the entire integrity system:
+   `visual_strategy_plan: 1→2` (recency direction),
+   `strategy_feasibility: 1→2` (all_of/any_of),
+   `visual_compositions: 2→3` + `FAMILIES_VERSION: 1→2` (signature
+   semantics), `visual_history: 2→3`, `timeline: 1→2` (transitions on
+   segments). Regression test simulates the exact upgrade scenario: create
+   artifacts under the OLD versions (monkeypatched constants), run with the
+   new code and identical inputs — bumped stages `invalidated`, untouched
+   stages (`semantic_beats`, `episode_art_direction`, `asset_requirements`,
+   `media_assets`) `resumed`, and `stage_meta` rewritten to the new versions.
+2. **`assets_for_beat()` no longer parses requirement ids** — it took a new
+   `requirements` argument and groups via `requirement_id -> beat_id`
+   mapping. End-to-end regression: requirements generated with deliberately
+   opaque ids (`R::beat_0003::portrait (opaque/2026)`) flow through
+   acquisition → feasibility → composition binding, and the CHARACTER beat's
+   portrait lands on a composition layer (`layer.asset_id` asserted).
+3. **`_hero_layer()` fallback can never return a TEXTURE layer** — first
+   non-texture layer only; texture-only compositions yield `hero=none`.
+
+New tests: `tests/test_phase121_patch.py` (7 tests, including the
+old-version upgrade scenario and the opaque-id end-to-end flow).

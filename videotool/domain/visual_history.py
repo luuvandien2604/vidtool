@@ -62,7 +62,9 @@ def _hero_layer(comp: VisualComposition):
         for layer in comp.layers:
             if layer.role == role_hint and layer.type != LayerType.TEXTURE:
                 return layer
-    return comp.layers[0] if comp.layers else None
+    # fallback: first non-texture layer; texture must never become the hero
+    return next((layer for layer in comp.layers
+                 if layer.type != LayerType.TEXTURE), None)
 
 
 def _graph_shape(comp: VisualComposition) -> str:

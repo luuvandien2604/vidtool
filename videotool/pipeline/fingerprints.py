@@ -13,17 +13,20 @@ import json
 
 # Bump a stage's version when its computation logic changes semantically;
 # that alone invalidates the stage and everything downstream of it.
+# Phase 1.2.1 patch: recency/policy/signature/timeline semantics changed,
+# so their versions were bumped - artifacts written by older code must NOT
+# resume through newer code with the same inputs.
 STAGE_VERSIONS: dict[str, int] = {
     "semantic_beats": 1,
     "episode_art_direction": 1,
-    "visual_strategy_plan": 1,
-    "asset_requirements": 2,   # 2: strength model replaces unused min_count
+    "visual_strategy_plan": 2,    # 2: family_recency novelty direction fixed
+    "asset_requirements": 2,      # 2: strength model replaces unused min_count
     "media_assets": 1,
-    "strategy_feasibility": 1,
-    "visual_compositions": 2,   # 2: consumes feasibility-adjusted plan
-    "visual_history": 2,
+    "strategy_feasibility": 2,    # 2: all_of/any_of policy semantics
+    "visual_compositions": 3,     # 3: signature ignores TEXTURE layers
+    "visual_history": 3,          # 3: structural signature semantics changed
     "motion_plan": 1,
-    "timeline": 1,
+    "timeline": 2,                # 2: transitions moved onto segments; no mutation
 }
 
 

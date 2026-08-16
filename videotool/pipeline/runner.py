@@ -324,7 +324,8 @@ class PipelineRunner:
                 sel = sel_by_beat.get(beat.beat_id)
                 if sel is None:
                     continue
-                beat_assets = assets_for_beat(res.assets, beat.beat_id)
+                beat_assets = assets_for_beat(res.assets, res.requirements,
+                                              beat.beat_id)
                 try:
                     strat_def = STRATEGY_CATALOG[sel.selected_strategy]
                     comps.append(compose_beat(
