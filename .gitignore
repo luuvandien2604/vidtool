@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# regenerable build outputs
+videotool-src.zip
+artifacts/

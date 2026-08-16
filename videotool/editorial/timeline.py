@@ -1,0 +1,83 @@
+"""Timeline composition (planning-level, renderer agnostic).
+
+Merges beats, compositions, motion events and subtitles into one resolved
+timeline artifact. Subtitles are independent from composition and live in
+the reserved safe zone.
+"""
+from __future__ import annotations
+
+from videotool.domain.composition import VisualComposition
+from videotool.domain.motion import MotionPlan
+from videotool.domain.narration import Narration
+from videotool.domain.semantic_beat import SemanticBeat
+
+from .composition.base import CANVAS, SUBTITLE_SAFE_ZONE
+
+SUBTITLE_MAX_WORDS = 7
+SUBTITLE_MAX_SEC = 3.5
+
+
+def build_subtitles(narration: Narration) -> list[dict]:
+    lines: list[dict] = []
+    current: list = []
+    for word in narration.words:
+        if not current:
+            current = [word]
+            continue
+        span = word.end_sec - current[0].start_sec
+        if (len(current) >= SUBTITLE_MAX_WORDS or span >= SUBTITLE_MAX_SEC
+                or word.text.endswith((".", "!", "?"))):
+            current.append(word)
+            lines.append({
+                "start_sec": round(current[0].start_sec, 3),
+                "end_sec": round(current[-1].end_sec, 3),
+                "text": " ".join(w.text for w in current),
+            })
+            current = []
+        else:
+            current.append(word)
+    if current:
+        lines.append({
+            "start_sec": round(current[0].start_sec, 3),
+            "end_sec": round(current[-1].end_sec, 3),
+            "text": " ".join(w.text for w in current),
+        })
+    return lines
+
+
+def build_timeline(episode_id: str, narration: Narration,
+                   beats: list[SemanticBeat],
+                   compositions: list[VisualComposition],
+                   motion: MotionPlan) -> dict:
+    comp_by_beat = {c.beat_id: c for c in compositions}
+    segments = []
+    for beat in beats:
+        comp = comp_by_beat.get(beat.beat_id)
+        segments.append({
+            "beat_id": beat.beat_id,
+            "composition_id": comp.composition_id if comp else None,
+            "semantic_function": beat.semantic_function.value,
+            "visual_family": comp.visual_family if comp else None,
+            "strategy": comp.strategy if comp else None,
+            "start_sec": beat.start_sec,
+            "end_sec": beat.end_sec,
+        })
+        if comp:
+            comp.transition_in = next(
+                (t.category.value for t in motion.transitions
+                 if t.to_beat == beat.beat_id), "CUT_IN" if beat is beats[0] else "CONTINUATION")
+            comp.transition_out = next(
+                (t.category.value for t in motion.transitions
+                 if t.from_beat == beat.beat_id), "CONTINUATION")
+
+    return {
+        "episode_id": episode_id,
+        "canvas": dict(CANVAS),
+        "subtitle_safe_zone": {"x": SUBTITLE_SAFE_ZONE[0], "y": SUBTITLE_SAFE_ZONE[1],
+                               "width": SUBTITLE_SAFE_ZONE[2], "height": SUBTITLE_SAFE_ZONE[3]},
+        "total_duration_sec": round(narration.duration_sec, 3),
+        "segments": segments,
+        "motion_events": [e.to_dict() for plan in motion.plans for e in plan.events],
+        "transitions": [t.to_dict() for t in motion.transitions],
+        "subtitles": build_subtitles(narration),
+    }
