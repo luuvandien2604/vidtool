@@ -3,7 +3,8 @@
 Stage order:
   semantic_beats -> episode_art_direction -> visual_strategy_plan ->
   asset_requirements -> media_assets -> strategy_feasibility ->
-  visual_compositions -> visual_history -> motion_plan -> timeline
+  visual_compositions -> visual_history -> timing_bindings ->
+  semantic_geometry -> motion_plan -> timeline
 
 Hardening guarantees:
 
@@ -26,6 +27,7 @@ from videotool.artifacts import ArtifactStore
 from videotool.domain.art_direction import EpisodeArtDirection
 from videotool.domain.assets import AssetRequirement, MediaAsset
 from videotool.domain.composition import VisualComposition
+from videotool.domain.geometry import GeometryHistory, GeometryPlan
 from videotool.domain.motion import MotionPlan
 from videotool.domain.narration import Narration, synthetic_word_timings
 from videotool.domain.semantic_beat import (SEMANTIC_BEAT_IDENTITY_VERSION,
@@ -44,6 +46,11 @@ from videotool.editorial.feasibility import run_feasibility_pass
 from videotool.editorial.media import (AcquisitionTrace, MediaAcquisitionConfig,
                                        MediaCandidate, MediaSearchPlan)
 from videotool.editorial.motion import build_motion_plan
+from videotool.editorial.geometry import (
+    GEOMETRY_POLICY_VERSION, GEOMETRY_SIGNATURE_VERSION,
+    SEMANTIC_GEOMETRY_VERSION, SemanticGeometryBuilder,
+    geometry_input_projection, validate_geometry_plan,
+    validate_geometry_plans)
 from videotool.editorial.timing import (ANCHOR_EXTRACTION_VERSION,
                                          MOTION_TIMING_VERSION,
                                          TIMING_BINDING_VERSION,
@@ -68,7 +75,7 @@ STAGES = ["narration_timing", "semantic_beats", "semantic_anchors",
           "media_acquisition_result", "media_assets",
           "media_acquisition_trace", "media_attribution",
           "strategy_feasibility", "visual_compositions", "visual_history",
-          "timing_bindings", "motion_plan", "timeline"]
+          "timing_bindings", "semantic_geometry", "motion_plan", "timeline"]
 
 
 @dataclass
@@ -100,6 +107,7 @@ class PipelineResult:
     compositions: list[VisualComposition] = field(default_factory=list)
     history: VisualHistory | None = None
     timing_bindings: list[TimingBinding] = field(default_factory=list)
+    geometry_plans: list[GeometryPlan] = field(default_factory=list)
     motion: MotionPlan | None = None
     timeline: dict | None = None
     validation: dict = field(default_factory=dict)
@@ -123,6 +131,7 @@ class PipelineRunner:
         self.timing_provider = (timing_provider
                                 or DeterministicNarrationTimingProvider())
         self.timing_policy = timing_policy or EditorialTimingPolicy()
+        self.geometry_builder = SemanticGeometryBuilder()
         # per-run state
         self._meta: dict = {}
         self._statuses: dict = {}
@@ -697,6 +706,61 @@ class PipelineRunner:
                                for binding in bindings_payload]
         bindings_hash = stable_hash(bindings_payload)
 
+        # 9b. unresolved semantic geometry -------------------------------------
+        def geometry_ok(payload) -> bool:
+            try:
+                plans = [GeometryPlan.from_dict(item) for item in payload]
+            except Exception:
+                return False
+            return validate_geometry_plans(
+                plans, {beat.beat_id for beat in res.beats},
+                {asset.asset_id for asset in res.assets}).ok
+
+        def compute_geometry():
+            beat_by_id = {beat.beat_id: beat for beat in res.beats}
+            asset_by_id = {asset.asset_id: asset for asset in res.assets}
+            binding_by_layer = {
+                (binding.composition_id, binding.layer_id): binding
+                for binding in res.timing_bindings}
+            history = GeometryHistory()
+            plans: list[GeometryPlan] = []
+            for composition in res.compositions:
+                beat = beat_by_id[composition.beat_id]
+                try:
+                    plan = self.geometry_builder.build_plan(
+                        beat, composition, asset_by_id, res.art_direction,
+                        binding_by_layer, history.recent())
+                    report = validate_geometry_plan(
+                        plan, {asset.asset_id for asset in res.assets})
+                    if not report.ok:
+                        raise ValueError("; ".join(report.errors))
+                except Exception as exc:
+                    reason = (f"{composition.beat_id}: semantic geometry "
+                              f"raised {type(exc).__name__}")
+                    self._repair_log(
+                        "semantic_geometry", reason,
+                        "deterministic semantic geometry fallback")
+                    plan = self.geometry_builder.fallback_plan(
+                        beat, composition.visual_family, reason,
+                        history.recent())
+                plans.append(plan)
+                history.record(plan.semantic_geometry_signature)
+            return [plan.to_dict() for plan in plans]
+
+        geometry_projection = geometry_input_projection(
+            res.compositions, res.assets, res.strategy_plan,
+            res.art_direction, res.semantic_anchors, res.timing_bindings)
+        fp_geometry = stable_hash(
+            STAGE_VERSIONS["semantic_geometry"], ep.episode_id,
+            beats_semantic_hash, geometry_projection,
+            SEMANTIC_GEOMETRY_VERSION, GEOMETRY_POLICY_VERSION,
+            GEOMETRY_SIGNATURE_VERSION)
+        geometry_payload = self._stage(
+            ep, "semantic_geometry", fp_geometry, compute_geometry,
+            resume_valid=geometry_ok)
+        res.geometry_plans = [GeometryPlan.from_dict(item)
+                              for item in geometry_payload]
+
         # 10. motion plan -----------------------------------------------------------
         def motion_ok(payload) -> bool:
             try:
@@ -750,6 +814,9 @@ class PipelineRunner:
         binding_errors = validate_timing_bindings(
             res.timing_bindings, res.beats, res.compositions,
             res.semantic_anchors)
+        geometry_report = validate_geometry_plans(
+            res.geometry_plans, {beat.beat_id for beat in res.beats},
+            {asset.asset_id for asset in res.assets})
         beats_report = validation.validate_beats(
             res.beats, res.narration_timing.duration_sec)
         comps_report = validation.validate_compositions(
@@ -770,6 +837,9 @@ class PipelineRunner:
                                  "errors": anchor_errors, "warnings": []},
             "timing_bindings": {"ok": not binding_errors,
                                 "errors": binding_errors, "warnings": []},
+            "semantic_geometry": {
+                "ok": geometry_report.ok, "errors": geometry_report.errors,
+                "warnings": geometry_report.warnings},
             "beats": {"ok": beats_report.ok, "errors": beats_report.errors,
                       "warnings": beats_report.warnings},
             "compositions": {"ok": comps_report.ok, "errors": comps_report.errors,

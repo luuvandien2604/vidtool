@@ -447,6 +447,7 @@ def test_word_timing_only_change_keeps_media_and_composition_resumed(tmp_path):
     assert statuses["semantic_beats"] == "resumed"
     assert statuses["media_assets"] == "resumed"
     assert statuses["visual_compositions"] == "resumed"
+    assert statuses["semantic_geometry"] == "resumed"
     assert statuses["semantic_anchors"] == "invalidated"
     assert statuses["timing_bindings"] == "invalidated"
     assert statuses["motion_plan"] == "invalidated"

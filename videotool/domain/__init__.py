@@ -10,6 +10,11 @@ from .motion import (CompositionMotionPlan, EventKind, MotionEvent, MotionPlan,
                      TransitionCategory, TransitionPlan)
 from .assets import AssetRequirement, MediaAsset
 from .strategy import ScoredCandidate, SelectionRecord, StrategyDefinition
+from .geometry import (CanvasRegion, CanvasSpec, ConstraintStrength,
+                       ConstraintType, EdgeType, GeometryConstraint,
+                       GeometryHistory, GeometryPlan, GeometryStyleHints,
+                       NormalizedRect, SafeZone, TextRole, VisualEdge,
+                       VisualGroup, VisualHierarchy, VisualNode, VisualRole)
 
 __all__ = [
     "Narration", "WordTiming", "synthetic_word_timings", "NarrationTiming",
@@ -23,4 +28,9 @@ __all__ = [
     "TransitionCategory", "TransitionPlan",
     "AssetRequirement", "MediaAsset",
     "ScoredCandidate", "SelectionRecord", "StrategyDefinition",
+    "CanvasRegion", "CanvasSpec", "ConstraintStrength", "ConstraintType",
+    "EdgeType", "GeometryConstraint", "GeometryHistory", "GeometryPlan",
+    "GeometryStyleHints", "NormalizedRect", "SafeZone", "TextRole",
+    "VisualEdge", "VisualGroup", "VisualHierarchy", "VisualNode",
+    "VisualRole",
 ]
