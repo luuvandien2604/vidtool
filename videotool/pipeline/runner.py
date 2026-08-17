@@ -30,6 +30,8 @@ from videotool.domain.motion import MotionPlan
 from videotool.domain.narration import Narration
 from videotool.domain.semantic_beat import SemanticBeat
 from videotool.domain.strategy import SelectionRecord
+from videotool.domain.timing import (NarrationTiming, SemanticAnchor,
+                                     TimingBinding)
 from videotool.domain.visual_history import VisualHistory
 from videotool.editorial import validation
 from videotool.editorial.composition import (FAMILIES_VERSION, assets_for_beat,
@@ -40,18 +42,31 @@ from videotool.editorial.feasibility import run_feasibility_pass
 from videotool.editorial.media import (AcquisitionTrace, MediaAcquisitionConfig,
                                        MediaCandidate, MediaSearchPlan)
 from videotool.editorial.motion import build_motion_plan
+from videotool.editorial.timing import (ANCHOR_EXTRACTION_VERSION,
+                                         MOTION_TIMING_VERSION,
+                                         TIMING_BINDING_VERSION,
+                                         EditorialTimingPolicy,
+                                         annotate_composition_semantics,
+                                         build_timing_bindings,
+                                         extract_semantic_anchors,
+                                         validate_anchors,
+                                         validate_narration_timing,
+                                         validate_timing_bindings)
 from videotool.editorial.strategies import (FUNCTION_CANDIDATES, STRATEGY_CATALOG,
                                              PlanningConfig, StrategyPlanner)
 from videotool.editorial.timeline import build_timeline
 from videotool.pipeline.fingerprints import STAGE_VERSIONS, stable_hash
 from videotool.providers.media import build_provider
+from videotool.providers.timing import (NARRATION_TIMING_VERSION,
+                                        DeterministicNarrationTimingProvider)
 
-STAGES = ["semantic_beats", "episode_art_direction", "visual_strategy_plan",
+STAGES = ["narration_timing", "semantic_beats", "semantic_anchors",
+          "episode_art_direction", "visual_strategy_plan",
           "asset_requirements", "media_search_plan", "media_candidates",
           "media_acquisition_result", "media_assets",
           "media_acquisition_trace", "media_attribution",
           "strategy_feasibility", "visual_compositions", "visual_history",
-          "motion_plan", "timeline"]
+          "timing_bindings", "motion_plan", "timeline"]
 
 
 @dataclass
@@ -68,7 +83,9 @@ class EpisodeInput:
 class PipelineResult:
     episode_id: str
     manifest: dict
+    narration_timing: NarrationTiming | None = None
     beats: list[SemanticBeat] = field(default_factory=list)
+    semantic_anchors: list[SemanticAnchor] = field(default_factory=list)
     art_direction: EpisodeArtDirection | None = None
     strategy_plan: list[SelectionRecord] = field(default_factory=list)   # plan-of-record (post-feasibility)
     preliminary_strategy_plan: list[SelectionRecord] = field(default_factory=list)
@@ -80,6 +97,7 @@ class PipelineResult:
     acquisition_traces: list = field(default_factory=list)
     compositions: list[VisualComposition] = field(default_factory=list)
     history: VisualHistory | None = None
+    timing_bindings: list[TimingBinding] = field(default_factory=list)
     motion: MotionPlan | None = None
     timeline: dict | None = None
     validation: dict = field(default_factory=dict)
@@ -89,7 +107,9 @@ class PipelineResult:
 class PipelineRunner:
     def __init__(self, store: ArtifactStore, mode: str = "final",
                  force: bool = False, planner_config: PlanningConfig | None = None,
-                 media_config: MediaAcquisitionConfig | None = None):
+                 media_config: MediaAcquisitionConfig | None = None,
+                 timing_provider=None,
+                 timing_policy: EditorialTimingPolicy | None = None):
         self.store = store
         self.mode = mode            # single source of truth for draft/final
         self.force = force
@@ -98,6 +118,9 @@ class PipelineRunner:
         self.art_director = HeuristicArtDirector()
         self.planner = StrategyPlanner(self.planner_config)
         self._media_config_override = media_config
+        self.timing_provider = (timing_provider
+                                or DeterministicNarrationTimingProvider())
+        self.timing_policy = timing_policy or EditorialTimingPolicy()
         # per-run state
         self._meta: dict = {}
         self._statuses: dict = {}
@@ -177,17 +200,46 @@ class PipelineRunner:
         narration_payload = ep.narration.to_dict()
         planner_cfg = asdict(self.planner_config)
 
+        # 0. canonical narration timing --------------------------------------
+        def timing_ok(payload) -> bool:
+            try:
+                timing = NarrationTiming.from_dict(payload)
+            except Exception:
+                return False
+            return not validate_narration_timing(timing)
+
+        def compute_timing():
+            return self.timing_provider.align(ep.narration).to_dict()
+
+        fp_timing = stable_hash(
+            STAGE_VERSIONS["narration_timing"], ep.episode_id,
+            narration_payload, self.timing_provider.provider_id,
+            self.timing_provider.provider_version, NARRATION_TIMING_VERSION)
+        timing_payload = self._stage(ep, "narration_timing", fp_timing,
+                                     compute_timing, resume_valid=timing_ok)
+        res.narration_timing = NarrationTiming.from_dict(timing_payload)
+        timing_hash = stable_hash(timing_payload)
+        timed_narration = Narration(text=ep.narration.text,
+                                    words=res.narration_timing.words,
+                                    language=ep.narration.language)
+        semantic_narration_payload = {
+            "text": ep.narration.text, "language": ep.narration.language,
+            "words": [word.text for word in res.narration_timing.words]}
+
         # 1. semantic beats -------------------------------------------------
         def beats_ok(payload) -> bool:
             try:
                 beats = [SemanticBeat.from_dict(b) for b in payload]
             except Exception:
                 return False
-            return bool(beats) and validation.validate_beats(
-                beats, ep.narration.duration_sec).ok
+            word_count = len(res.narration_timing.words)
+            return bool(beats) and all(
+                beat.semantic_function is not None and beat.narration_text
+                and 0 <= beat.word_start < beat.word_end <= word_count
+                and beat.end_sec > beat.start_sec for beat in beats)
 
         def compute_beats():
-            beats = self.beat_analyzer.analyze(ep.narration, ep.episode_id)
+            beats = self.beat_analyzer.analyze(timed_narration, ep.episode_id)
             for b in beats:
                 if b.semantic_function is None:
                     self._repair_log("semantic_beats",
@@ -195,18 +247,48 @@ class PipelineRunner:
                                      "default function assigned (repair)")
             beats = [validation.repair_beat(b) for b in beats]
             kept = [b for b in beats
-                    if validation.validate_beats([b], ep.narration.duration_sec).ok]
+                    if validation.validate_beats([b],
+                                                  timed_narration.duration_sec).ok]
             for dropped in [b for b in beats if b not in kept]:
                 self._repair_log("semantic_beats", f"{dropped.beat_id} invalid",
                                  "dropped beat")
             return [b.to_dict() for b in kept]
 
         fp_beats = stable_hash(STAGE_VERSIONS["semantic_beats"], ep.episode_id,
-                               narration_payload)
+                               semantic_narration_payload)
         beats_payload = self._stage(ep, "semantic_beats", fp_beats, compute_beats,
                                     resume_valid=beats_ok)
         res.beats = [SemanticBeat.from_dict(b) for b in beats_payload]
         beats_hash = stable_hash(beats_payload)
+        # Beat meaning/word spans are resumable independently of TTS boundary
+        # changes. Absolute windows are reconstructed in memory from the
+        # canonical timing artifact for anchors, motion and timeline.
+        for beat in res.beats:
+            beat.start_sec = res.narration_timing.words[beat.word_start].start_sec
+            beat.end_sec = res.narration_timing.words[beat.word_end - 1].end_sec
+
+        # 1b. semantic anchors ----------------------------------------------
+        def anchors_ok(payload) -> bool:
+            try:
+                anchors = [SemanticAnchor.from_dict(a) for a in payload]
+            except Exception:
+                return False
+            return not validate_anchors(anchors, res.beats,
+                                        res.narration_timing)
+
+        def compute_anchors():
+            return [anchor.to_dict() for anchor in
+                    extract_semantic_anchors(res.narration_timing, res.beats)]
+
+        fp_anchors = stable_hash(
+            STAGE_VERSIONS["semantic_anchors"], ep.episode_id, beats_hash,
+            timing_hash, ANCHOR_EXTRACTION_VERSION)
+        anchors_payload = self._stage(ep, "semantic_anchors", fp_anchors,
+                                      compute_anchors,
+                                      resume_valid=anchors_ok)
+        res.semantic_anchors = [SemanticAnchor.from_dict(a)
+                                for a in anchors_payload]
+        anchors_hash = stable_hash(anchors_payload)
 
         # 2. art direction ------------------------------------------------------
         def art_ok(payload) -> bool:
@@ -218,7 +300,7 @@ class PipelineRunner:
 
         def compute_art():
             ad = self.art_director.generate(ep.episode_id, ep.subject,
-                                            ep.narration, res.beats)
+                                            timed_narration, res.beats)
             if not ad.visual_motifs or not ad.accent.get("primary"):
                 self._repair_log("episode_art_direction",
                                  "generated identity incomplete",
@@ -227,7 +309,7 @@ class PipelineRunner:
             return ad.to_dict()
 
         fp_art = stable_hash(STAGE_VERSIONS["episode_art_direction"], ep.episode_id,
-                             ep.subject, narration_payload, beats_hash)
+                             ep.subject, semantic_narration_payload, beats_hash)
         art_payload = self._stage(ep, "episode_art_direction", fp_art, compute_art,
                                   resume_valid=art_ok)
         res.art_direction = EpisodeArtDirection.from_dict(art_payload)
@@ -514,7 +596,8 @@ class PipelineRunner:
             if not comps or any(c.beat_id not in beat_ids for c in comps):
                 return False
             report = validation.validate_compositions(comps, res.beats,
-                                                      res.assets, mode=self.mode)
+                                                      res.assets, mode=self.mode,
+                                                      allow_timing_independent_duration=True)
             return report.ok
 
         def compute_compositions():
@@ -542,6 +625,9 @@ class PipelineRunner:
                         beat, len(comps), beat_assets,
                         family=sel.visual_family))
             comps = self._fallback_invalid_compositions(comps, res.beats, res.assets)
+            beat_by_id = {beat.beat_id: beat for beat in res.beats}
+            for comp in comps:
+                annotate_composition_semantics(comp, beat_by_id[comp.beat_id])
             return [c.to_dict() for c in comps]
 
         fp_comps = stable_hash(STAGE_VERSIONS["visual_compositions"], ep.episode_id,
@@ -569,27 +655,59 @@ class PipelineRunner:
                                    resume_valid=history_ok)
         res.history = VisualHistory.from_dict(hist_payload)
 
-        # 9. motion plan ------------------------------------------------------------
+        # 9. layer-to-anchor timing bindings ----------------------------------
+        def bindings_ok(payload) -> bool:
+            try:
+                bindings = [TimingBinding.from_dict(binding)
+                            for binding in payload]
+            except Exception:
+                return False
+            return not validate_timing_bindings(
+                bindings, res.beats, res.compositions, res.semantic_anchors)
+
+        def compute_bindings():
+            return [binding.to_dict() for binding in build_timing_bindings(
+                res.beats, res.compositions, res.semantic_anchors,
+                self.timing_policy)]
+
+        fp_bindings = stable_hash(
+            STAGE_VERSIONS["timing_bindings"], ep.episode_id, fp_anchors,
+            anchors_hash, comps_hash, TIMING_BINDING_VERSION,
+            self.timing_policy.to_dict())
+        bindings_payload = self._stage(
+            ep, "timing_bindings", fp_bindings, compute_bindings,
+            resume_valid=bindings_ok)
+        res.timing_bindings = [TimingBinding.from_dict(binding)
+                               for binding in bindings_payload]
+        bindings_hash = stable_hash(bindings_payload)
+
+        # 10. motion plan -----------------------------------------------------------
         def motion_ok(payload) -> bool:
             try:
                 motion = MotionPlan.from_dict(payload)
             except Exception:
                 return False
-            return validation.validate_motion(motion, res.beats,
-                                              res.compositions).ok
+            return validation.validate_motion(
+                motion, res.beats, res.compositions, res.semantic_anchors,
+                res.timing_bindings).ok
 
         def compute_motion():
-            return build_motion_plan(ep.episode_id, res.beats,
-                                     res.compositions).to_dict()
+            return build_motion_plan(
+                ep.episode_id, res.beats, res.compositions,
+                res.semantic_anchors, res.timing_bindings,
+                self.timing_policy).to_dict()
 
         fp_motion = stable_hash(STAGE_VERSIONS["motion_plan"], ep.episode_id,
-                                beats_hash, comps_hash)
+                                beats_hash, comps_hash, anchors_hash,
+                                fp_bindings, bindings_hash,
+                                MOTION_TIMING_VERSION,
+                                self.timing_policy.to_dict())
         motion_payload = self._stage(ep, "motion_plan", fp_motion, compute_motion,
                                      resume_valid=motion_ok)
         res.motion = MotionPlan.from_dict(motion_payload)
         motion_hash = stable_hash(motion_payload)
 
-        # 10. timeline ------------------------------------------------------------
+        # 11. timeline ------------------------------------------------------------
         def timeline_ok(payload) -> bool:
             if not isinstance(payload, dict) or not payload.get("segments"):
                 return False
@@ -598,27 +716,43 @@ class PipelineRunner:
                                                  self.mode).ok
 
         def compute_timeline():
-            return build_timeline(ep.episode_id, ep.narration, res.beats,
-                                  res.compositions, res.motion)
+            return build_timeline(
+                ep.episode_id, timed_narration, res.beats,
+                res.compositions, res.motion, res.narration_timing)
 
         fp_timeline = stable_hash(STAGE_VERSIONS["timeline"], ep.episode_id,
-                                  narration_payload, beats_hash, comps_hash,
-                                  motion_hash)
+                                  timing_hash, beats_hash, comps_hash,
+                                  fp_motion, motion_hash)
         res.timeline = self._stage(ep, "timeline", fp_timeline, compute_timeline,
                                    resume_valid=timeline_ok)
 
-        # 11. editorial QC (final gate; never hides failures) ------------------------
-        beats_report = validation.validate_beats(res.beats, ep.narration.duration_sec)
+        # 12. editorial QC (final gate; never hides failures) -----------------------
+        timing_errors = validate_narration_timing(res.narration_timing)
+        anchor_errors = validate_anchors(res.semantic_anchors, res.beats,
+                                         res.narration_timing)
+        binding_errors = validate_timing_bindings(
+            res.timing_bindings, res.beats, res.compositions,
+            res.semantic_anchors)
+        beats_report = validation.validate_beats(
+            res.beats, res.narration_timing.duration_sec)
         comps_report = validation.validate_compositions(
-            res.compositions, res.beats, res.assets, mode=self.mode)
+            res.compositions, res.beats, res.assets, mode=self.mode,
+            allow_timing_independent_duration=True)
         plan_report = validation.validate_strategy_plan(res.strategy_plan, res.beats)
-        motion_report = validation.validate_motion(res.motion, res.beats,
-                                                   res.compositions)
+        motion_report = validation.validate_motion(
+            res.motion, res.beats, res.compositions, res.semantic_anchors,
+            res.timing_bindings)
         timeline_report = validation.validate_timeline(res.timeline, res.beats,
                                                        res.compositions, self.mode)
         media_report = validation.validate_media_completeness(
             res.beats, res.requirements, res.assets, res.strategy_plan, self.mode)
         res.validation = {
+            "narration_timing": {"ok": not timing_errors,
+                                 "errors": timing_errors, "warnings": []},
+            "semantic_anchors": {"ok": not anchor_errors,
+                                 "errors": anchor_errors, "warnings": []},
+            "timing_bindings": {"ok": not binding_errors,
+                                "errors": binding_errors, "warnings": []},
             "beats": {"ok": beats_report.ok, "errors": beats_report.errors,
                       "warnings": beats_report.warnings},
             "compositions": {"ok": comps_report.ok, "errors": comps_report.errors,

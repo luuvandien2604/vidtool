@@ -17,7 +17,8 @@ import json
 # so their versions were bumped - artifacts written by older code must NOT
 # resume through newer code with the same inputs.
 STAGE_VERSIONS: dict[str, int] = {
-    "semantic_beats": 1,
+    "narration_timing": 1,       # Phase 2B canonical word-boundary source
+    "semantic_beats": 2,         # 2: semantic identity excludes boundary times
     "episode_art_direction": 1,
     "visual_strategy_plan": 2,    # 2: family_recency novelty direction fixed
     "asset_requirements": 2,      # 2: strength model replaces unused min_count
@@ -28,10 +29,12 @@ STAGE_VERSIONS: dict[str, int] = {
     "media_acquisition_trace": 2,  # 2: lossless derivation from result bundle
     "media_attribution": 1,       # Phase 2A
     "strategy_feasibility": 2,    # 2: all_of/any_of policy semantics
-    "visual_compositions": 4,     # 4: signature derived after reading_order
+    "visual_compositions": 5,     # 5: semantic refs added; geometry unchanged
     "visual_history": 4,          # 4: signature semantics changed
-    "motion_plan": 1,
-    "timeline": 2,                # 2: transitions moved onto segments; no mutation
+    "semantic_anchors": 1,        # Phase 2B phrase/semantic word spans
+    "timing_bindings": 1,         # Phase 2B layer-to-anchor bindings
+    "motion_plan": 2,             # 2: anchor-first absolute scheduling
+    "timeline": 3,                # 3: canonical timing shared with subtitles
 }
 
 

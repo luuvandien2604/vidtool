@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from videotool.domain.narration import Narration
+from videotool.domain.timing import NarrationTiming
 from videotool.domain.semantic_beat import SemanticBeat
 from videotool.domain.art_direction import EpisodeArtDirection
 
@@ -18,6 +19,12 @@ class BeatAnalyzer(Protocol):
     """Narration + timing -> semantic beats."""
 
     def analyze(self, narration: Narration, episode_id: str) -> list[SemanticBeat]: ...
+
+
+class NarrationTimingProvider(Protocol):
+    """TTS boundaries / forced alignment / deterministic fixture boundary."""
+
+    def align(self, narration: Narration) -> NarrationTiming: ...
 
 
 class ArtDirectionGenerator(Protocol):

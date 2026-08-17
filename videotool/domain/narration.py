@@ -15,6 +15,12 @@ class WordTiming:
     text: str
     start_sec: float
     end_sec: float
+    confidence: float = 1.0
+
+    @property
+    def word(self) -> str:
+        """Canonical spoken token name; ``text`` remains backward compatible."""
+        return self.text
 
     def to_dict(self) -> dict:
         return {
@@ -22,11 +28,16 @@ class WordTiming:
             "text": self.text,
             "start_sec": self.start_sec,
             "end_sec": self.end_sec,
+            "confidence": self.confidence,
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> "WordTiming":
-        return cls(**d)
+        payload = dict(d)
+        if "text" not in payload and "word" in payload:
+            payload["text"] = payload.pop("word")
+        payload.setdefault("confidence", 1.0)
+        return cls(**payload)
 
 
 @dataclass(frozen=True)

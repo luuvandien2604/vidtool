@@ -1,4 +1,6 @@
 from .narration import Narration, WordTiming, synthetic_word_timings
+from .timing import (AnchorType, NarrationTiming, SemanticAnchor,
+                     TimingBinding)
 from .semantic_beat import SemanticBeat, SemanticFunction
 from .art_direction import EpisodeArtDirection
 from .composition import (CompositionLayer, EntranceStep, LayerType, MotionStyle,
@@ -10,7 +12,8 @@ from .assets import AssetRequirement, MediaAsset
 from .strategy import ScoredCandidate, SelectionRecord, StrategyDefinition
 
 __all__ = [
-    "Narration", "WordTiming", "synthetic_word_timings",
+    "Narration", "WordTiming", "synthetic_word_timings", "NarrationTiming",
+    "AnchorType", "SemanticAnchor", "TimingBinding",
     "SemanticBeat", "SemanticFunction",
     "EpisodeArtDirection",
     "CompositionLayer", "EntranceStep", "LayerType", "MotionStyle",

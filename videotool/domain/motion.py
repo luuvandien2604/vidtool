@@ -37,6 +37,11 @@ class MotionEvent:
     start_sec: float   # absolute on the episode timeline
     end_sec: float
     semantic_reason: str
+    event_id: str = ""
+    anchor_id: str | None = None
+    timing_source: str = "beat_fallback"
+    timing_confidence: float = 0.3
+    depends_on: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         d = self.__dict__.copy()

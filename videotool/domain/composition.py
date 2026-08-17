@@ -64,6 +64,7 @@ class CompositionLayer:
     exit: MotionStyle = MotionStyle.SLIDE_OUT
     enter_at: float = 0.0     # fraction of beat duration when the layer enters
     reason: str = ""          # why this layer exists / why it moves now
+    semantic_refs: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         d = self.__dict__.copy()

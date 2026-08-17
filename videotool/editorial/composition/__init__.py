@@ -29,7 +29,7 @@ FAMILIES: dict[str, CompositionFamily] = {
 }
 
 # bump when any family's arrangement logic changes (part of stage fingerprints)
-FAMILIES_VERSION = 3  # 3: signature derived after reading_order staggering
+FAMILIES_VERSION = 4  # 4: layers carry topic-independent semantic references
 
 __all__ = [
     "FAMILIES", "CompositionContext", "CompositionFamily",

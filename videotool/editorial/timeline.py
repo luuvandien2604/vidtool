@@ -9,6 +9,7 @@ from __future__ import annotations
 from videotool.domain.composition import VisualComposition
 from videotool.domain.motion import MotionPlan
 from videotool.domain.narration import Narration
+from videotool.domain.timing import NarrationTiming
 from videotool.domain.semantic_beat import SemanticBeat
 
 from .composition.base import CANVAS, SUBTITLE_SAFE_ZONE
@@ -17,7 +18,7 @@ SUBTITLE_MAX_WORDS = 7
 SUBTITLE_MAX_SEC = 3.5
 
 
-def build_subtitles(narration: Narration) -> list[dict]:
+def build_subtitles(narration: Narration | NarrationTiming) -> list[dict]:
     lines: list[dict] = []
     current: list = []
     for word in narration.words:
@@ -48,7 +49,8 @@ def build_subtitles(narration: Narration) -> list[dict]:
 def build_timeline(episode_id: str, narration: Narration,
                    beats: list[SemanticBeat],
                    compositions: list[VisualComposition],
-                   motion: MotionPlan) -> dict:
+                   motion: MotionPlan,
+                   narration_timing: NarrationTiming | None = None) -> dict:
     """Compose the resolved timeline.
 
     Transitions are DATA of the motion plan / timeline - this function must
@@ -79,14 +81,16 @@ def build_timeline(episode_id: str, narration: Narration,
             "transition_out": transition_out,
         })
 
+    canonical_timing = narration_timing or narration
     return {
         "episode_id": episode_id,
         "canvas": dict(CANVAS),
         "subtitle_safe_zone": {"x": SUBTITLE_SAFE_ZONE[0], "y": SUBTITLE_SAFE_ZONE[1],
                                "width": SUBTITLE_SAFE_ZONE[2], "height": SUBTITLE_SAFE_ZONE[3]},
-        "total_duration_sec": round(narration.duration_sec, 3),
+        "total_duration_sec": round(canonical_timing.duration_sec, 3),
         "segments": segments,
         "motion_events": [e.to_dict() for plan in motion.plans for e in plan.events],
         "transitions": [t.to_dict() for t in motion.transitions],
-        "subtitles": build_subtitles(narration),
+        "subtitles": build_subtitles(canonical_timing),
+        "narration_timing_source": getattr(canonical_timing, "source", "legacy"),
     }

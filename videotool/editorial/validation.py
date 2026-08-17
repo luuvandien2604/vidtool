@@ -62,7 +62,9 @@ def validate_compositions(compositions: list[VisualComposition],
                           beats: list[SemanticBeat],
                           assets: list[MediaAsset],
                           mode: str = "final",
-                          max_family_streak: int = 2) -> ValidationReport:
+                          max_family_streak: int = 2,
+                          allow_timing_independent_duration: bool = False
+                          ) -> ValidationReport:
     report = ValidationReport()
     beat_ids = {b.beat_id for b in beats}
     beat_by_id = {b.beat_id: b for b in beats}
@@ -98,7 +100,8 @@ def validate_compositions(compositions: list[VisualComposition],
         if comp.duration_sec <= 0:
             report.error(f"{comp.composition_id}: non-positive duration")
         beat = beat_by_id.get(comp.beat_id)
-        if beat is not None and abs(comp.duration_sec - beat.duration_sec) > 0.01:
+        if (beat is not None and not allow_timing_independent_duration
+                and abs(comp.duration_sec - beat.duration_sec) > 0.01):
             report.error(f"{comp.composition_id}: duration {comp.duration_sec}s "
                          f"does not match beat {beat.beat_id} "
                          f"({beat.duration_sec}s)")
@@ -271,12 +274,19 @@ def validate_media_completeness(beats, requirements, assets, records,
 
 
 def validate_motion(motion, beats: list[SemanticBeat],
-                    compositions: list[VisualComposition]) -> ValidationReport:
+                    compositions: list[VisualComposition], anchors=None,
+                    bindings=None) -> ValidationReport:
     """One motion plan per composition; events bound to layers and beats."""
     report = ValidationReport()
     beat_by_id = {b.beat_id: b for b in beats}
     beat_index = {b.beat_id: i for i, b in enumerate(beats)}
     comp_by_id = {c.composition_id: c for c in compositions}
+    anchor_ids = ({anchor.anchor_id for anchor in anchors}
+                  if anchors is not None else None)
+    binding_layers = ({(binding.composition_id, binding.layer_id)
+                       for binding in bindings} if bindings is not None else None)
+    binding_by_layer = ({(binding.composition_id, binding.layer_id): binding
+                         for binding in bindings} if bindings is not None else {})
 
     plan_comp_ids = [p.composition_id for p in motion.plans]
     for comp in compositions:
@@ -299,7 +309,14 @@ def validate_motion(motion, beats: list[SemanticBeat],
             report.error(f"{plan.composition_id}: motion references unknown beat")
             continue
         layer_ids = {l.id for l in comp.layers}
+        event_by_id = {event.event_id: event for event in plan.events
+                       if event.event_id}
+        if len(event_by_id) != len([event for event in plan.events
+                                    if event.event_id]):
+            report.error(f"{plan.composition_id}: duplicate motion event id")
         for ev in plan.events:
+            if bindings is not None and not ev.event_id:
+                report.error(f"{plan.composition_id}: motion event missing id")
             if ev.layer_id not in layer_ids:
                 report.error(f"{plan.composition_id}: event references unknown "
                              f"layer {ev.layer_id}")
@@ -312,6 +329,28 @@ def validate_motion(motion, beats: list[SemanticBeat],
             if ev.end_sec > beat.end_sec + 1e-6:
                 report.error(f"{plan.composition_id}: event {ev.layer_id} ends "
                              f"after beat window")
+            if anchor_ids is not None and ev.anchor_id is not None \
+                    and ev.anchor_id not in anchor_ids:
+                report.error(f"{plan.composition_id}: unknown anchor {ev.anchor_id}")
+            if not 0 <= ev.timing_confidence <= 1 or not ev.timing_source:
+                report.error(f"{plan.composition_id}: invalid timing provenance")
+            if binding_layers is not None and ev.kind.value == "ENTRANCE" \
+                    and (plan.composition_id, ev.layer_id) not in binding_layers:
+                report.error(f"{plan.composition_id}: entrance has no timing binding")
+            if bindings is not None and ev.kind.value == "ENTRANCE":
+                binding = binding_by_layer.get((plan.composition_id,
+                                                ev.layer_id))
+                if binding is not None and ev.anchor_id != binding.anchor_id:
+                    report.error(f"{plan.composition_id}: entrance anchor differs "
+                                 f"from binding for {ev.layer_id}")
+            for dependency_id in ev.depends_on:
+                dependency = event_by_id.get(dependency_id)
+                if dependency is None:
+                    report.error(f"{plan.composition_id}: missing dependency "
+                                 f"{dependency_id}")
+                elif dependency.end_sec > ev.start_sec + 1e-6:
+                    report.error(f"{plan.composition_id}: dependency "
+                                 f"{dependency_id} completes after {ev.event_id}")
     for t in motion.transitions:
         if t.from_beat not in beat_index or t.to_beat not in beat_index:
             report.error(f"transition references unknown beat "
