@@ -27,8 +27,10 @@ from videotool.domain.art_direction import EpisodeArtDirection
 from videotool.domain.assets import AssetRequirement, MediaAsset
 from videotool.domain.composition import VisualComposition
 from videotool.domain.motion import MotionPlan
-from videotool.domain.narration import Narration
-from videotool.domain.semantic_beat import SemanticBeat
+from videotool.domain.narration import Narration, synthetic_word_timings
+from videotool.domain.semantic_beat import (SEMANTIC_BEAT_IDENTITY_VERSION,
+                                            SemanticBeat,
+                                            semantic_beats_identity)
 from videotool.domain.strategy import SelectionRecord
 from videotool.domain.timing import (NarrationTiming, SemanticAnchor,
                                      TimingBinding)
@@ -225,6 +227,14 @@ class PipelineRunner:
         semantic_narration_payload = {
             "text": ep.narration.text, "language": ep.narration.language,
             "words": [word.text for word in res.narration_timing.words]}
+        # Beat segmentation is semantic state. Give it a deterministic clock
+        # derived only from the canonical token text so TTS speed cannot alter
+        # split/merge decisions on a clean run while resume keeps old splits.
+        semantic_narration = Narration(
+            text=ep.narration.text,
+            words=synthetic_word_timings(
+                " ".join(semantic_narration_payload["words"])),
+            language=ep.narration.language)
 
         # 1. semantic beats -------------------------------------------------
         def beats_ok(payload) -> bool:
@@ -239,7 +249,8 @@ class PipelineRunner:
                 and beat.end_sec > beat.start_sec for beat in beats)
 
         def compute_beats():
-            beats = self.beat_analyzer.analyze(timed_narration, ep.episode_id)
+            beats = self.beat_analyzer.analyze(semantic_narration,
+                                               ep.episode_id)
             for b in beats:
                 if b.semantic_function is None:
                     self._repair_log("semantic_beats",
@@ -248,7 +259,7 @@ class PipelineRunner:
             beats = [validation.repair_beat(b) for b in beats]
             kept = [b for b in beats
                     if validation.validate_beats([b],
-                                                  timed_narration.duration_sec).ok]
+                                                  semantic_narration.duration_sec).ok]
             for dropped in [b for b in beats if b not in kept]:
                 self._repair_log("semantic_beats", f"{dropped.beat_id} invalid",
                                  "dropped beat")
@@ -259,13 +270,15 @@ class PipelineRunner:
         beats_payload = self._stage(ep, "semantic_beats", fp_beats, compute_beats,
                                     resume_valid=beats_ok)
         res.beats = [SemanticBeat.from_dict(b) for b in beats_payload]
-        beats_hash = stable_hash(beats_payload)
         # Beat meaning/word spans are resumable independently of TTS boundary
         # changes. Absolute windows are reconstructed in memory from the
         # canonical timing artifact for anchors, motion and timeline.
         for beat in res.beats:
             beat.start_sec = res.narration_timing.words[beat.word_start].start_sec
             beat.end_sec = res.narration_timing.words[beat.word_end - 1].end_sec
+        beats_semantic_hash = stable_hash(
+            SEMANTIC_BEAT_IDENTITY_VERSION,
+            semantic_beats_identity(res.beats))
 
         # 1b. semantic anchors ----------------------------------------------
         def anchors_ok(payload) -> bool:
@@ -281,7 +294,8 @@ class PipelineRunner:
                     extract_semantic_anchors(res.narration_timing, res.beats)]
 
         fp_anchors = stable_hash(
-            STAGE_VERSIONS["semantic_anchors"], ep.episode_id, beats_hash,
+            STAGE_VERSIONS["semantic_anchors"], ep.episode_id,
+            beats_semantic_hash,
             timing_hash, ANCHOR_EXTRACTION_VERSION)
         anchors_payload = self._stage(ep, "semantic_anchors", fp_anchors,
                                       compute_anchors,
@@ -309,7 +323,8 @@ class PipelineRunner:
             return ad.to_dict()
 
         fp_art = stable_hash(STAGE_VERSIONS["episode_art_direction"], ep.episode_id,
-                             ep.subject, semantic_narration_payload, beats_hash)
+                             ep.subject, semantic_narration_payload,
+                             beats_semantic_hash)
         art_payload = self._stage(ep, "episode_art_direction", fp_art, compute_art,
                                   resume_valid=art_ok)
         res.art_direction = EpisodeArtDirection.from_dict(art_payload)
@@ -329,7 +344,7 @@ class PipelineRunner:
             return [r.to_dict() for r in records]
 
         fp_strategy = stable_hash(STAGE_VERSIONS["visual_strategy_plan"],
-                                  ep.episode_id, beats_hash, planner_cfg)
+                                  ep.episode_id, beats_semantic_hash, planner_cfg)
         strategy_payload = self._stage(ep, "visual_strategy_plan", fp_strategy,
                                        compute_strategy, resume_valid=strategy_ok)
         res.preliminary_strategy_plan = [SelectionRecord.from_dict(r)
@@ -355,7 +370,7 @@ class PipelineRunner:
             return [r.to_dict() for r in kept]
 
         fp_reqs = stable_hash(STAGE_VERSIONS["asset_requirements"], ep.episode_id,
-                              beats_hash)
+                              beats_semantic_hash)
         reqs_payload = self._stage(ep, "asset_requirements", fp_reqs,
                                    compute_requirements, resume_valid=reqs_ok)
         res.requirements = [AssetRequirement.from_dict(r) for r in reqs_payload]
@@ -392,7 +407,8 @@ class PipelineRunner:
                     plan_search(res.requirements, res.beats)]
 
         fp_search_plan = stable_hash(STAGE_VERSIONS["media_search_plan"],
-                                     ep.episode_id, reqs_hash, beats_hash,
+                                     ep.episode_id, reqs_hash,
+                                     beats_semantic_hash,
                                      MEDIA_QUERY_VERSION)
         search_plan_payload = self._stage(ep, "media_search_plan", fp_search_plan,
                                           compute_search_plan,
@@ -631,7 +647,7 @@ class PipelineRunner:
             return [c.to_dict() for c in comps]
 
         fp_comps = stable_hash(STAGE_VERSIONS["visual_compositions"], ep.episode_id,
-                               beats_hash, plan_hash, media_hash, art_hash,
+                               beats_semantic_hash, plan_hash, media_hash, art_hash,
                                self.mode, FAMILIES_VERSION)
         comps_payload = self._stage(ep, "visual_compositions", fp_comps,
                                     compute_compositions, resume_valid=comps_ok)
@@ -698,7 +714,8 @@ class PipelineRunner:
                 self.timing_policy).to_dict()
 
         fp_motion = stable_hash(STAGE_VERSIONS["motion_plan"], ep.episode_id,
-                                beats_hash, comps_hash, anchors_hash,
+                                beats_semantic_hash, timing_hash, comps_hash,
+                                anchors_hash,
                                 fp_bindings, bindings_hash,
                                 MOTION_TIMING_VERSION,
                                 self.timing_policy.to_dict())
@@ -721,7 +738,7 @@ class PipelineRunner:
                 res.compositions, res.motion, res.narration_timing)
 
         fp_timeline = stable_hash(STAGE_VERSIONS["timeline"], ep.episode_id,
-                                  timing_hash, beats_hash, comps_hash,
+                                  timing_hash, beats_semantic_hash, comps_hash,
                                   fp_motion, motion_hash)
         res.timeline = self._stage(ep, "timeline", fp_timeline, compute_timeline,
                                    resume_valid=timeline_ok)

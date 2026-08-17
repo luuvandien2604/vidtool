@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 
 from videotool.domain.assets import MediaAsset
 from videotool.domain.composition import LayerType, VisualComposition
+from videotool.domain.motion import EventKind
 from videotool.domain.semantic_beat import SemanticBeat
 from videotool.domain.strategy import SelectionRecord
 
@@ -314,7 +315,13 @@ def validate_motion(motion, beats: list[SemanticBeat],
         if len(event_by_id) != len([event for event in plan.events
                                     if event.event_id]):
             report.error(f"{plan.composition_id}: duplicate motion event id")
+        events_by_layer: dict[str, dict] = {}
         for ev in plan.events:
+            layer_events = events_by_layer.setdefault(ev.layer_id, {})
+            if ev.kind in layer_events:
+                report.error(f"{plan.composition_id}: duplicate {ev.kind.value} "
+                             f"event for {ev.layer_id}")
+            layer_events[ev.kind] = ev
             if bindings is not None and not ev.event_id:
                 report.error(f"{plan.composition_id}: motion event missing id")
             if ev.layer_id not in layer_ids:
@@ -351,6 +358,19 @@ def validate_motion(motion, beats: list[SemanticBeat],
                 elif dependency.end_sec > ev.start_sec + 1e-6:
                     report.error(f"{plan.composition_id}: dependency "
                                  f"{dependency_id} completes after {ev.event_id}")
+        for layer_id, lifecycle in events_by_layer.items():
+            entrance = lifecycle.get(EventKind.ENTRANCE)
+            emphasis = lifecycle.get(EventKind.EMPHASIS)
+            exit_event = lifecycle.get(EventKind.EXIT)
+            if entrance and emphasis \
+                    and entrance.end_sec > emphasis.start_sec + 1e-6:
+                report.error(f"{plan.composition_id}: {layer_id} entrance "
+                             "overlaps emphasis")
+            predecessor = emphasis or entrance
+            if predecessor and exit_event \
+                    and predecessor.end_sec > exit_event.start_sec + 1e-6:
+                report.error(f"{plan.composition_id}: {layer_id} "
+                             f"{predecessor.kind.value.lower()} overlaps exit")
     for t in motion.transitions:
         if t.from_beat not in beat_index or t.to_beat not in beat_index:
             report.error(f"transition references unknown beat "

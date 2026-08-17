@@ -9,7 +9,9 @@ from videotool.domain.composition import (CompositionLayer, LayerType,
                                           VisualComposition)
 from videotool.domain.motion import EventKind
 from videotool.domain.narration import Narration, WordTiming, synthetic_word_timings
-from videotool.domain.semantic_beat import SemanticBeat, SemanticFunction
+from videotool.domain.semantic_beat import (SEMANTIC_BEAT_IDENTITY_VERSION,
+                                            SemanticBeat, SemanticFunction,
+                                            semantic_beats_identity)
 from videotool.domain.timing import (AnchorType, NarrationTiming,
                                      SemanticAnchor, TimingBinding)
 from videotool.editorial.motion import build_motion_plan
@@ -21,6 +23,7 @@ from videotool.editorial.timing import (EditorialTimingPolicy,
                                          validate_anchors,
                                          validate_narration_timing,
                                          validate_timing_bindings)
+from videotool.editorial.validation import validate_motion
 from videotool.fixtures.berlin_wall import load_episode
 from videotool.pipeline.fingerprints import STAGE_VERSIONS, stable_hash
 from videotool.pipeline.runner import EpisodeInput, PipelineRunner
@@ -178,11 +181,18 @@ def test_lead_time_clamps_to_beat_start():
     assert entrance.start_sec == beat.start_sec
 
 
-def test_minimum_visibility_is_preserved_for_late_portrait_anchor():
-    timing, beat = one_beat("For a long moment the room waited, then Smith spoke.",
-                            entities=["Smith"])
-    layer = CompositionLayer("portrait", LayerType.IMAGE, .1, .1, .5, .6,
-                             role="hero")
+@pytest.mark.parametrize(("concept_field", "concept", "layer"), [
+    ("entities", "Smith",
+     CompositionLayer("portrait", LayerType.IMAGE, .1, .1, .5, .6,
+                      role="hero")),
+    ("locations", "Hungary",
+     CompositionLayer("map", LayerType.MAP, .1, .1, .7, .7, role="map")),
+])
+def test_late_exact_anchor_never_exceeds_editorial_lead(
+        concept_field, concept, layer):
+    timing, beat = one_beat(
+        f"For a long moment the room stayed completely still then found {concept}.",
+        **{concept_field: [concept]})
     comp = composition(beat, [layer])
     annotate_composition_semantics(comp, beat)
     anchors = extract_semantic_anchors(timing, [beat])
@@ -192,10 +202,96 @@ def test_minimum_visibility_is_preserved_for_late_portrait_anchor():
                                policy)
     events = motion.plans[0].events
     entrance = next(event for event in events if event.kind == EventKind.ENTRANCE)
-    exit_event = next(event for event in events if event.kind == EventKind.EXIT)
-    available = exit_event.start_sec - beat.start_sec
-    assert exit_event.start_sec - entrance.start_sec >= \
-        min(policy.portrait_min_visibility_sec, available) - 0.001
+    binding = bindings[0]
+    anchor = next(anchor for anchor in anchors
+                  if anchor.anchor_id == binding.anchor_id)
+    earliest = binding.start_sec - policy.lead_for(anchor.anchor_type)
+    assert entrance.start_sec >= earliest - 0.001
+    assert entrance.start_sec == pytest.approx(max(beat.start_sec, earliest),
+                                                abs=0.001)
+    assert item_visibility(events, beat) < policy.minimum_visibility_for(layer)
+
+
+def item_visibility(events, beat):
+    entrance = next(event for event in events if event.kind == EventKind.ENTRANCE)
+    exit_event = next((event for event in events
+                       if event.kind == EventKind.EXIT), None)
+    return (exit_event.start_sec if exit_event else beat.end_sec) \
+        - entrance.start_sec
+
+
+@pytest.mark.parametrize(("text", "beat_fields", "layer"), [
+    ('They waited through the night before she said "open the gate".',
+     {"semantic_function": SemanticFunction.QUOTE},
+     CompositionLayer("quote", LayerType.DOCUMENT, .1, .1, .7, .7,
+                      role="document", semantic_refs=["open the gate"])),
+    ("They waited through the night and acted immediately.", {},
+     CompositionLayer("emphasis", LayerType.LABEL, .2, .2, .5, .1,
+                      role="support", semantic_refs=["immediately"])),
+])
+def test_exact_quote_or_emphasis_is_never_revealed_early(
+        text, beat_fields, layer):
+    timing, beat = one_beat(text, **beat_fields)
+    comp = composition(beat, [layer])
+    anchors = extract_semantic_anchors(timing, [beat])
+    policy = EditorialTimingPolicy()
+    bindings = build_timing_bindings([beat], [comp], anchors, policy)
+    binding = bindings[0]
+    anchor = next(anchor for anchor in anchors
+                  if anchor.anchor_id == binding.anchor_id)
+    assert anchor.resolution_source == "exact_phrase"
+    motion = build_motion_plan("episode", [beat], [comp], anchors, bindings,
+                               policy)
+    entrance = next(event for event in motion.plans[0].events
+                    if event.kind == EventKind.ENTRANCE)
+    assert entrance.start_sec >= \
+        binding.start_sec - policy.lead_for(anchor.anchor_type) - 0.001
+
+
+def test_semantic_fallback_may_move_earlier_for_minimum_visibility():
+    timing, beat = one_beat(
+        "The room remained quiet while everyone waited for the final decision.",
+        objects=["missing decree"])
+    layer = CompositionLayer("document", LayerType.DOCUMENT, .1, .1, .7, .7,
+                             role="document")
+    comp = composition(beat, [layer])
+    annotate_composition_semantics(comp, beat)
+    anchors = extract_semantic_anchors(timing, [beat])
+    policy = EditorialTimingPolicy()
+    bindings = build_timing_bindings([beat], [comp], anchors, policy)
+    assert bindings[0].source == "semantic_fallback"
+    motion = build_motion_plan("episode", [beat], [comp], anchors, bindings,
+                               policy)
+    entrance = next(event for event in motion.plans[0].events
+                    if event.kind == EventKind.ENTRANCE)
+    desired = bindings[0].start_sec - policy.default_lead_sec
+    assert entrance.start_sec < desired
+
+
+def test_emphasis_and_exit_lifecycle_never_overlaps():
+    timing, beat = one_beat(
+        "For a long time the crowd waited and then moved suddenly.")
+    layer = CompositionLayer(
+        "label", LayerType.LABEL, .2, .2, .5, .1, role="support",
+        semantic_refs=["suddenly"], emphasis=MotionStyle.SCALE_EMPHASIS)
+    comp = composition(beat, [layer])
+    anchors = extract_semantic_anchors(timing, [beat])
+    bindings = build_timing_bindings([beat], [comp], anchors,
+                                      EditorialTimingPolicy())
+    motion = build_motion_plan("episode", [beat], [comp], anchors, bindings)
+    lifecycle = {event.kind: event for event in motion.plans[0].events}
+    assert lifecycle[EventKind.ENTRANCE].end_sec <= \
+        lifecycle[EventKind.EMPHASIS].start_sec
+    if EventKind.EXIT in lifecycle:
+        assert lifecycle[EventKind.EMPHASIS].end_sec <= \
+            lifecycle[EventKind.EXIT].start_sec
+    assert validate_motion(motion, [beat], [comp], anchors, bindings).ok
+
+    if EventKind.EXIT in lifecycle:
+        lifecycle[EventKind.EXIT].start_sec = \
+            lifecycle[EventKind.EMPHASIS].end_sec - 0.01
+        report = validate_motion(motion, [beat], [comp], anchors, bindings)
+        assert any("overlaps exit" in error for error in report.errors)
 
 
 def test_collision_resolution_staggers_third_high_salience_entrance():
@@ -372,6 +468,39 @@ def test_global_boundary_retime_reuses_semantics_media_and_geometry(tmp_path):
     assert statuses["visual_compositions"] == "resumed"
     assert statuses["motion_plan"] == "invalidated"
     assert result.timeline["total_duration_sec"] == words[-1].end_sec
+
+
+def test_retimed_resume_and_clean_run_have_equivalent_semantic_plans(tmp_path):
+    first = run_berlin(tmp_path / "resumed")
+    words_t2 = tuple(
+        replace(word, start_sec=round(word.start_sec * 1.07, 3),
+                end_sec=round(word.end_sec * 1.07, 3))
+        for word in first.narration_timing.words)
+    data = load_episode()
+    narration_t2 = Narration(text=data["narration"].text, words=words_t2)
+
+    resumed_t2 = run_berlin(tmp_path / "resumed", narration_t2)
+    clean_t2 = run_berlin(tmp_path / "clean", narration_t2)
+
+    resumed_identity = semantic_beats_identity(resumed_t2.beats)
+    clean_identity = semantic_beats_identity(clean_t2.beats)
+    assert resumed_identity == clean_identity
+    assert stable_hash(SEMANTIC_BEAT_IDENTITY_VERSION, resumed_identity) == \
+        stable_hash(SEMANTIC_BEAT_IDENTITY_VERSION, clean_identity)
+    assert [record.to_dict() for record in resumed_t2.preliminary_strategy_plan] \
+        == [record.to_dict() for record in clean_t2.preliminary_strategy_plan]
+    assert [record.to_dict() for record in resumed_t2.strategy_plan] == \
+        [record.to_dict() for record in clean_t2.strategy_plan]
+    assert [requirement.to_dict() for requirement in resumed_t2.requirements] == \
+        [requirement.to_dict() for requirement in clean_t2.requirements]
+    assert [plan.to_dict() for plan in resumed_t2.media_search_plan] == \
+        [plan.to_dict() for plan in clean_t2.media_search_plan]
+    assert resumed_t2.manifest["stages"]["semantic_beats"]["status"] == \
+        "resumed"
+    for stage in ("episode_art_direction", "visual_strategy_plan",
+                  "asset_requirements", "media_search_plan"):
+        assert resumed_t2.manifest["stages"][stage]["fingerprint"] == \
+            clean_t2.manifest["stages"][stage]["fingerprint"]
 
 
 @pytest.mark.parametrize(("stage", "mutate"), [

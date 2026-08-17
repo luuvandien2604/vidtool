@@ -13,7 +13,7 @@ from videotool.editorial.media.ranking import fold, tokens
 
 ANCHOR_EXTRACTION_VERSION = 1
 TIMING_BINDING_VERSION = 1
-MOTION_TIMING_VERSION = 1
+MOTION_TIMING_VERSION = 2
 
 
 @dataclass(frozen=True)

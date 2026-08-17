@@ -18,7 +18,7 @@ import json
 # resume through newer code with the same inputs.
 STAGE_VERSIONS: dict[str, int] = {
     "narration_timing": 1,       # Phase 2B canonical word-boundary source
-    "semantic_beats": 2,         # 2: semantic identity excludes boundary times
+    "semantic_beats": 3,         # 3: timing-independent semantic clock
     "episode_art_direction": 1,
     "visual_strategy_plan": 2,    # 2: family_recency novelty direction fixed
     "asset_requirements": 2,      # 2: strength model replaces unused min_count
@@ -33,7 +33,7 @@ STAGE_VERSIONS: dict[str, int] = {
     "visual_history": 4,          # 4: signature semantics changed
     "semantic_anchors": 1,        # Phase 2B phrase/semantic word spans
     "timing_bindings": 1,         # Phase 2B layer-to-anchor bindings
-    "motion_plan": 2,             # 2: anchor-first absolute scheduling
+    "motion_plan": 3,             # 3: hard anchors + ordered event lifecycle
     "timeline": 3,                # 3: canonical timing shared with subtitles
 }
 

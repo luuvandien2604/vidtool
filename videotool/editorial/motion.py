@@ -12,6 +12,9 @@ from videotool.editorial.timing import EditorialTimingPolicy
 from .transitions import plan_transitions
 
 
+_HARD_TIMING_SOURCES = {"exact_phrase", "alias_match", "estimated_phrase"}
+
+
 def _event_id(composition_id: str, layer_id: str, kind: EventKind) -> str:
     return f"event:{composition_id}:{layer_id}:{kind.value.lower()}"
 
@@ -59,7 +62,8 @@ def _resolve_collisions(entries: list[dict], beat: SemanticBeat,
                    if start - policy.collision_window_sec < value <= start]) \
                 >= policy.max_high_salience_entrances:
             start += policy.collision_stagger_sec
-        item["start"] = min(start, item["latest_start"])
+        item["start"] = (start if item["hard_timing"]
+                         else min(start, item["latest_start"]))
         if item["start"] > original_start + 1e-6:
             item["reason"] += (" Deterministically staggered to satisfy the "
                                "high-salience concurrency limit.")
@@ -113,14 +117,18 @@ def build_motion_plan(episode_id: str, beats: list[SemanticBeat],
             min_visibility = min(policy.minimum_visibility_for(layer),
                                  max(0.0, exit_start - beat.start_sec))
             latest_start = max(beat.start_sec, exit_start - min_visibility)
+            hard_timing = bool(binding and source in _HARD_TIMING_SOURCES)
+            scheduled_start = max(beat.start_sec, start)
+            if not hard_timing:
+                scheduled_start = min(scheduled_start, latest_start)
             entries.append({
                 "layer": layer, "binding": binding, "anchor": anchor,
-                "start": round(max(beat.start_sec,
-                                   min(start, latest_start)), 3),
+                "start": round(scheduled_start, 3),
                 "latest_start": round(latest_start, 3),
                 "exit_start": round(exit_start, 3), "source": source,
                 "confidence": confidence, "anchor_id": anchor_id,
                 "reason": reason, "high": _high_salience(layer),
+                "hard_timing": hard_timing,
                 "dependencies": _dependency_layers(comp, layer)})
 
         _resolve_collisions(entries, beat, policy)
@@ -137,9 +145,10 @@ def build_motion_plan(episode_id: str, beats: list[SemanticBeat],
                         prerequisite["start"] + policy.entrance_duration_sec)
             if prerequisite_ends:
                 prior_start = item["start"]
-                item["start"] = round(min(item["exit_start"],
-                                          max(item["start"],
-                                              max(prerequisite_ends))), 3)
+                delayed_start = max(item["start"], max(prerequisite_ends))
+                if not item["hard_timing"]:
+                    delayed_start = min(item["exit_start"], delayed_start)
+                item["start"] = round(delayed_start, 3)
                 if item["start"] > prior_start + 1e-6:
                     item["reason"] += (" Delayed until prerequisite layer "
                                        "entrance completed.")
@@ -152,44 +161,65 @@ def build_motion_plan(episode_id: str, beats: list[SemanticBeat],
             depends = [_event_id(comp.composition_id, layer_id,
                                  EventKind.ENTRANCE)
                        for layer_id in item["dependencies"]]
-            entrance_end = min(item["exit_start"],
+            entrance_end = min(beat.end_sec,
                                item["start"] + policy.entrance_duration_sec)
             events.append(MotionEvent(
                 layer_id=layer.id, kind=EventKind.ENTRANCE,
                 style=layer.entrance.value, start_sec=round(item["start"], 3),
-                end_sec=round(max(
-                    item["start"] + policy.minimum_event_duration_sec,
-                    entrance_end), 3),
+                end_sec=round(entrance_end, 3),
                 semantic_reason=item["reason"], event_id=entrance_id,
                 anchor_id=item["anchor_id"], timing_source=item["source"],
                 timing_confidence=item["confidence"], depends_on=depends))
-            if layer.emphasis:
+            lifecycle_end = entrance_end
+            lifecycle_dependency = entrance_id
+            if (layer.emphasis
+                    and beat.end_sec - lifecycle_end
+                    >= policy.minimum_event_duration_sec):
                 emphasis_start = max(entrance_end,
                                      item["binding"].start_sec
                                      if item["binding"] else item["start"])
-                emphasis_start = min(emphasis_start, item["exit_start"])
+                preferred_end = min(
+                    beat.end_sec,
+                    emphasis_start + policy.emphasis_duration_sec)
+                # Preserve the normal exit window when possible. A late hard
+                # anchor keeps its word alignment and may consume that window;
+                # in that case the animated exit is shortened or omitted.
+                if (item["exit_start"] - emphasis_start
+                        >= policy.minimum_event_duration_sec):
+                    emphasis_end = min(preferred_end, item["exit_start"])
+                else:
+                    emphasis_end = preferred_end
+                if (emphasis_end - emphasis_start
+                        >= policy.minimum_event_duration_sec):
+                    emphasis_id = _event_id(
+                        comp.composition_id, layer.id, EventKind.EMPHASIS)
+                    events.append(MotionEvent(
+                        layer_id=layer.id, kind=EventKind.EMPHASIS,
+                        style=layer.emphasis.value,
+                        start_sec=round(emphasis_start, 3),
+                        end_sec=round(emphasis_end, 3),
+                        semantic_reason=("Emphasis lands on the bound narration "
+                                         "anchor after the layer is visible."),
+                        event_id=emphasis_id,
+                        anchor_id=item["anchor_id"],
+                        timing_source=item["source"],
+                        timing_confidence=item["confidence"],
+                        depends_on=[entrance_id]))
+                    lifecycle_end = emphasis_end
+                    lifecycle_dependency = emphasis_id
+            exit_start = max(item["exit_start"], lifecycle_end)
+            if (beat.end_sec - exit_start
+                    >= policy.minimum_event_duration_sec):
                 events.append(MotionEvent(
-                    layer_id=layer.id, kind=EventKind.EMPHASIS,
-                    style=layer.emphasis.value,
-                    start_sec=round(emphasis_start, 3),
-                    end_sec=round(min(beat.end_sec,
-                                      emphasis_start
-                                      + policy.emphasis_duration_sec), 3),
-                    semantic_reason=("Emphasis lands on the bound narration "
-                                     "anchor after the layer is visible."),
+                    layer_id=layer.id, kind=EventKind.EXIT,
+                    style=layer.exit.value, start_sec=round(exit_start, 3),
+                    end_sec=round(beat.end_sec, 3),
+                    semantic_reason=("Element clears as the narrated thought "
+                                     "resolves; late anchors shorten this exit."),
                     event_id=_event_id(comp.composition_id, layer.id,
-                                       EventKind.EMPHASIS),
-                    anchor_id=item["anchor_id"], timing_source=item["source"],
-                    timing_confidence=item["confidence"],
-                    depends_on=[entrance_id]))
-            events.append(MotionEvent(
-                layer_id=layer.id, kind=EventKind.EXIT,
-                style=layer.exit.value, start_sec=item["exit_start"],
-                end_sec=round(beat.end_sec, 3),
-                semantic_reason="Element clears as the narrated thought resolves.",
-                event_id=_event_id(comp.composition_id, layer.id, EventKind.EXIT),
-                timing_source="beat_boundary", timing_confidence=1.0,
-                depends_on=[entrance_id]))
+                                       EventKind.EXIT),
+                    timing_source="beat_boundary", timing_confidence=1.0,
+                    depends_on=[lifecycle_dependency]))
 
         events.sort(key=lambda event: (event.start_sec, event.layer_id,
                                        event.kind.value))

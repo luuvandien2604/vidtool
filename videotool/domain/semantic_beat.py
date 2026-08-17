@@ -9,6 +9,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 
+SEMANTIC_BEAT_IDENTITY_VERSION = 1
+
+
 class SemanticFunction(str, Enum):
     HOOK = "HOOK"
     ESTABLISHING_CONTEXT = "ESTABLISHING_CONTEXT"
@@ -63,9 +66,21 @@ class SemanticBeat:
         d["duration_sec"] = self.duration_sec
         return d
 
+    def semantic_identity(self) -> dict:
+        """Return the timing-independent identity used by semantic stages."""
+        identity = self.to_dict()
+        for field_name in ("start_sec", "end_sec", "duration_sec"):
+            identity.pop(field_name, None)
+        return identity
+
     @classmethod
     def from_dict(cls, d: dict) -> "SemanticBeat":
         d = dict(d)
         d.pop("duration_sec", None)
         d["semantic_function"] = SemanticFunction(d["semantic_function"])
         return cls(**d)
+
+
+def semantic_beats_identity(beats: list[SemanticBeat]) -> list[dict]:
+    """Canonical semantic identity for an ordered beat sequence."""
+    return [beat.semantic_identity() for beat in beats]
