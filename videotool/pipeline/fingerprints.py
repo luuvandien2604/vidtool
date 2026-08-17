@@ -22,9 +22,10 @@ STAGE_VERSIONS: dict[str, int] = {
     "visual_strategy_plan": 2,    # 2: family_recency novelty direction fixed
     "asset_requirements": 2,      # 2: strength model replaces unused min_count
     "media_search_plan": 1,       # Phase 2A: deterministic semantic queries
-    "media_candidates": 1,        # Phase 2A: provider search results
-    "media_assets": 2,            # 2: production acquisition (2A)
-    "media_acquisition_trace": 1,  # Phase 2A
+    "media_candidates": 2,        # 2: isolated query diagnostics persisted
+    "media_acquisition_result": 1,  # atomic assets + explanatory trace source
+    "media_assets": 3,            # 3: strong semantic resume validation
+    "media_acquisition_trace": 2,  # 2: lossless derivation from result bundle
     "media_attribution": 1,       # Phase 2A
     "strategy_feasibility": 2,    # 2: all_of/any_of policy semantics
     "visual_compositions": 4,     # 4: signature derived after reading_order

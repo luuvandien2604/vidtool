@@ -109,11 +109,16 @@ class AcquisitionTrace:
     provider: str = ""
     queries_attempted: list[str] = field(default_factory=list)
     candidates_seen: int = 0
+    candidate_ids: list[str] = field(default_factory=list)
+    candidate_scores: list[dict] = field(default_factory=list)
     selected_candidate_id: str | None = None
     selected_score: float = 0.0
+    selected_reason: str = ""
+    cache_status: str = ""
     unresolved_reason: str = ""
     rejections: list[dict] = field(default_factory=list)
-    errors: list[str] = field(default_factory=list)
+    search_results: list[dict] = field(default_factory=list)
+    errors: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return self.__dict__.copy()

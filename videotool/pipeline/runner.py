@@ -48,7 +48,8 @@ from videotool.providers.media import build_provider
 
 STAGES = ["semantic_beats", "episode_art_direction", "visual_strategy_plan",
           "asset_requirements", "media_search_plan", "media_candidates",
-          "media_assets", "media_acquisition_trace", "media_attribution",
+          "media_acquisition_result", "media_assets",
+          "media_acquisition_trace", "media_attribution",
           "strategy_feasibility", "visual_compositions", "visual_history",
           "motion_plan", "timeline"]
 
@@ -101,7 +102,6 @@ class PipelineRunner:
         self._meta: dict = {}
         self._statuses: dict = {}
         self._repairs: list[dict] = []
-        self._last_acquisition = None
 
     # ---- media plumbing ---------------------------------------------------
     def _media_config(self, ep: EpisodeInput) -> MediaAcquisitionConfig:
@@ -173,7 +173,6 @@ class PipelineRunner:
         res = PipelineResult(episode_id=ep.episode_id,
                              manifest={"stages": {}, "repairs": []})
         self._meta, self._statuses, self._repairs = {}, {}, []
-        self._last_acquisition = None
 
         narration_payload = ep.narration.to_dict()
         planner_cfg = asdict(self.planner_config)
@@ -281,19 +280,14 @@ class PipelineRunner:
         reqs_hash = stable_hash(reqs_payload)
 
         # 5. media acquisition ---------------------------------------------------
-        def media_ok(payload) -> bool:
-            try:
-                assets = [MediaAsset.from_dict(a) for a in payload]
-            except Exception:
-                return False
-            return all(a.asset_id for a in assets)
-
         # 5a. media search plan (deterministic, semantic) ------------------------
         from videotool.editorial.media import (LICENSE_POLICY_VERSION,
                                                MEDIA_QUERY_VERSION,
                                                MEDIA_RANKING_VERSION,
                                                MEDIA_DOWNLOAD_VERSION,
-                                               ACQUISITION_SERVICE_VERSION)
+                                               ACQUISITION_SERVICE_VERSION,
+                                               MEDIA_CACHE_VERSION,
+                                               validate_media_assets)
         from videotool.editorial.media import (MediaAcquisitionConfig,
                                                MediaAcquisitionService,
                                                MediaCache, plan_search,
@@ -332,23 +326,33 @@ class PipelineRunner:
         def candidates_ok(payload) -> bool:
             try:
                 cand_map = payload["by_requirement"]
+                diagnostics = payload["search_diagnostics"]
                 for items in cand_map.values():
                     for c in items:
-                        MediaCandidate.from_dict(c)
+                        candidate = MediaCandidate.from_dict(c)
+                        if (not candidate.candidate_id
+                                or candidate.provider != payload["provider"]
+                                or not candidate.media_url):
+                            return False
             except Exception:
                 return False
-            return True
+            known = {p.requirement_id for p in res.media_search_plan}
+            return set(cand_map) == known and set(diagnostics) == known
 
         def compute_candidates():
+            diagnostics: dict[str, list[dict]] = {}
             found = search_candidates(res.media_search_plan, provider,
-                                      media_config.max_candidates_per_query)
+                                      media_config.max_candidates_per_query,
+                                      diagnostics=diagnostics)
             return {"provider": media_config.provider,
                     "by_requirement": {rid: [c.to_dict() for c in cands]
-                                       for rid, cands in found.items()}}
+                                       for rid, cands in found.items()},
+                    "search_diagnostics": diagnostics}
 
         fp_candidates = stable_hash(
             STAGE_VERSIONS["media_candidates"], ep.episode_id,
-            search_plan_hash, media_config.provider, provider.provider_version,
+            fp_search_plan, search_plan_hash, media_config.provider,
+            provider.provider_version,
             media_config.max_candidates_per_query, media_config.timeout_sec,
             media_config.retries, ep.catalog)
         candidates_payload = self._stage(ep, "media_candidates", fp_candidates,
@@ -359,74 +363,91 @@ class PipelineRunner:
             for rid, items in candidates_payload["by_requirement"].items()}
         candidates_hash = stable_hash(candidates_payload)
 
-        # 5c. media assets (rank -> license -> fetch -> validate -> cache) ---------
+        cache = MediaCache(media_config.cache_dir
+                           or (self.store.root / "media_cache"))
+
+        # 5c. one atomic acquisition result feeds assets and full trace. This
+        # prevents trace reconstruction from losing information after resume.
+        def acquisition_result_ok(payload) -> bool:
+            try:
+                assets = [MediaAsset.from_dict(a) for a in payload["assets"]]
+                traces = [AcquisitionTrace.from_dict(t)
+                          for t in payload["traces"]]
+            except Exception:
+                return False
+            known = {r.requirement_id for r in res.requirements}
+            return (not validate_media_assets(
+                        assets, res.requirements, self.mode,
+                        res.media_candidates, cache)
+                    and len(traces) == len(res.requirements)
+                    and {t.requirement_id for t in traces} == known)
+
+        def compute_acquisition_result():
+            service = MediaAcquisitionService(provider, cache, media_config)
+            outcome = service.acquire(
+                res.requirements, res.media_search_plan, res.media_candidates,
+                mode=self.mode,
+                search_diagnostics=candidates_payload["search_diagnostics"])
+            return {"assets": [a.to_dict() for a in outcome.assets],
+                    "traces": [t.to_dict() for t in outcome.traces],
+                    "attributions": [a.to_dict()
+                                     for a in outcome.attributions]}
+
+        fp_acquisition = stable_hash(
+            STAGE_VERSIONS["media_acquisition_result"], ep.episode_id,
+            fp_candidates, candidates_hash, MEDIA_RANKING_VERSION,
+            LICENSE_POLICY_VERSION,
+            MEDIA_DOWNLOAD_VERSION, MEDIA_CACHE_VERSION,
+            ACQUISITION_SERVICE_VERSION, media_config.to_dict(), self.mode)
+        acquisition_payload = self._stage(
+            ep, "media_acquisition_result", fp_acquisition,
+            compute_acquisition_result, resume_valid=acquisition_result_ok)
+        acquisition_hash = stable_hash(acquisition_payload)
+
+        # 5d. public media asset artifact with strong semantic resume checks. -----
         def media_ok(payload) -> bool:
             try:
                 assets = [MediaAsset.from_dict(a) for a in payload]
             except Exception:
                 return False
-            return all(a.asset_id for a in assets)
+            return not validate_media_assets(
+                assets, res.requirements, self.mode,
+                res.media_candidates, cache)
 
         def compute_media():
-            cache = MediaCache(media_config.cache_dir
-                               or (self.store.root / "media_cache"))
-            service = MediaAcquisitionService(provider, cache, media_config)
-            outcome = service.acquire(res.requirements, res.media_search_plan,
-                                      res.media_candidates, mode=self.mode)
-            self._last_acquisition = outcome
-            return [a.to_dict() for a in outcome.assets]
+            return acquisition_payload["assets"]
 
         fp_media = stable_hash(
-            STAGE_VERSIONS["media_assets"], ep.episode_id, candidates_hash,
-            MEDIA_RANKING_VERSION, LICENSE_POLICY_VERSION,
-            MEDIA_DOWNLOAD_VERSION, ACQUISITION_SERVICE_VERSION,
-            media_config.to_dict(), self.mode)
+            STAGE_VERSIONS["media_assets"], ep.episode_id,
+            fp_acquisition, acquisition_hash)
         media_payload = self._stage(ep, "media_assets", fp_media, compute_media,
                                     resume_valid=media_ok)
         res.assets = [MediaAsset.from_dict(a) for a in media_payload]
         media_hash = stable_hash(media_payload)
 
-        # 5d. acquisition trace ------------------------------------------------------
+        # 5e. acquisition trace ------------------------------------------------------
         def trace_ok(payload) -> bool:
             known = {r.requirement_id for r in res.requirements}
             try:
                 traces = [AcquisitionTrace.from_dict(t) for t in payload]
             except Exception:
                 return False
-            return bool(traces) and all(t.requirement_id in known for t in traces)
+            return (len(traces) == len(res.requirements)
+                    and {t.requirement_id for t in traces} == known
+                    and all(t.queries_attempted for t in traces))
 
         def compute_trace():
-            outcome = self._last_acquisition
-            if outcome is not None:
-                return [t.to_dict() for t in outcome.traces]
-            # assets resumed: rebuild a faithful trace from persisted state
-            plan_by_req = {p.requirement_id: p for p in res.media_search_plan}
-            asset_by_req = {a.requirement_id: a for a in res.assets}
-            rebuilt = []
-            for req in res.requirements:
-                plan = plan_by_req.get(req.requirement_id)
-                asset = asset_by_req.get(req.requirement_id)
-                rebuilt.append(AcquisitionTrace(
-                    requirement_id=req.requirement_id,
-                    provider=media_config.provider,
-                    queries_attempted=([plan.primary_query] +
-                                       list(plan.alternate_queries)
-                                       if plan else []),
-                    selected_candidate_id=(asset.candidate_id
-                                           if asset and not asset.is_placeholder
-                                           else None),
-                    unresolved_reason="" if asset is not None else "unresolved",
-                ).to_dict())
-            return rebuilt
+            return acquisition_payload["traces"]
 
         fp_trace = stable_hash(STAGE_VERSIONS["media_acquisition_trace"],
-                               ep.episode_id, candidates_hash, media_hash)
+                               ep.episode_id, fp_acquisition, acquisition_hash,
+                               fp_media, media_hash)
         trace_payload = self._stage(ep, "media_acquisition_trace", fp_trace,
                                     compute_trace, resume_valid=trace_ok)
         res.acquisition_traces = [AcquisitionTrace.from_dict(t)
                                   for t in trace_payload]
 
-        # 5e. attribution manifest ---------------------------------------------------
+        # 5f. attribution manifest ---------------------------------------------------
         def attribution_ok(payload) -> bool:
             asset_ids = {a.asset_id for a in res.assets}
             try:

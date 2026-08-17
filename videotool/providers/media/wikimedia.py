@@ -80,7 +80,7 @@ class UrllibTransport:
 @register_provider
 class WikimediaMediaProvider:
     provider_id = "wikimedia"
-    provider_version = 1
+    provider_version = 2  # 2: expose remote media revision identity
 
     def __init__(self, transport=None, timeout_sec: float = 15.0,
                  retries: int = 2, user_agent: str = "vidtool"):
@@ -98,7 +98,7 @@ class WikimediaMediaProvider:
             "gsrnamespace": "6",  # File:
             "gsrlimit": str(max(1, limit)),
             "prop": "imageinfo",
-            "iiprop": "url|size|mime|extmetadata",
+            "iiprop": "url|size|mime|sha1|timestamp|extmetadata",
             "iiurlwidth": "320",
         }
         url = f"{API_BASE}?{urllib.parse.urlencode(params)}"
@@ -157,7 +157,9 @@ class WikimediaMediaProvider:
             media_url=info.get("url", ""),
             thumbnail_url=info.get("thumburl", ""),
             categories=categories,
-            provider_metadata={"mime": mime, "pageid": page.get("pageid")},
+            provider_metadata={"mime": mime, "pageid": page.get("pageid"),
+                               "sha1": info.get("sha1", ""),
+                               "timestamp": info.get("timestamp", "")},
         )
 
     @staticmethod

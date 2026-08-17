@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from videotool.editorial.media.models import (KIND_TO_MEDIA_TYPE, MediaCandidate,
                                               MediaSearchPlan, ScoredCandidate)
 
-MEDIA_RANKING_VERSION = 1
+MEDIA_RANKING_VERSION = 2  # 2: normalized provider identity is authoritative
 
 DEFAULT_WEIGHTS = {
     "entity_match": 0.25,
@@ -144,6 +144,13 @@ def media_type_match_score(plan: MediaSearchPlan, cand: MediaCandidate) -> float
 
 def source_quality(cand: MediaCandidate) -> float:
     """Institutional providers rank above anonymous uploads."""
+    provider_trust = {
+        "wikimedia": 1.0,
+        "fixture": 0.7,
+    }
+    normalized_provider = fold(cand.provider)
+    if normalized_provider in provider_trust:
+        return provider_trust[normalized_provider]
     trusted = ("wikimedia commons", "library of congress", "bundesarchiv",
                "national archives", "internet archive")
     source = fold(" ".join([cand.provider, " ".join(cand.categories)]))

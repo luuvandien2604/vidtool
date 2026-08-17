@@ -17,9 +17,10 @@ from videotool.editorial.media.ranking import (MEDIA_RANKING_VERSION,
                                                rank_candidates)
 from videotool.editorial.media.licensing import (LICENSE_POLICY_VERSION,
                                                  license_allowed)
-from videotool.editorial.media.cache import MediaCache
+from videotool.editorial.media.cache import MEDIA_CACHE_VERSION, MediaCache
 from videotool.editorial.media.validation import (MEDIA_DOWNLOAD_VERSION,
-                                                  validate_media)
+                                                  validate_media,
+                                                  validate_media_assets)
 from videotool.editorial.media.acquisition import (ACQUISITION_SERVICE_VERSION,
                                                    MediaAcquisitionService,
                                                    search_candidates)
@@ -32,9 +33,10 @@ from videotool.editorial.media.models import (MediaAcquisitionConfig,
 __all__ = [
     "CatalogAcquirer", "plan_search", "build_search_plan", "rank_candidates",
     "search_candidates", "license_allowed", "MediaCache", "validate_media",
+    "validate_media_assets",
     "MediaAcquisitionService", "MediaAcquisitionConfig", "MediaAttribution",
     "MediaCandidate", "MediaSearchPlan", "MediaType", "ScoredCandidate",
     "AcquisitionTrace", "MEDIA_QUERY_VERSION", "MEDIA_RANKING_VERSION",
     "LICENSE_POLICY_VERSION", "MEDIA_DOWNLOAD_VERSION",
-    "ACQUISITION_SERVICE_VERSION",
+    "ACQUISITION_SERVICE_VERSION", "MEDIA_CACHE_VERSION",
 ]

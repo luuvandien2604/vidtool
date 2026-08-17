@@ -7,7 +7,9 @@ type, never from the remote name.
 """
 from __future__ import annotations
 
+import re
 import struct
+import urllib.parse
 from dataclasses import dataclass
 
 MEDIA_DOWNLOAD_VERSION = 1
@@ -162,3 +164,81 @@ def sanitize_stem(name: str) -> str:
     """Path-traversal-proof stem for any display filename."""
     keep = [c if (c.isalnum() or c in "-_") else "_" for c in name]
     return "".join(keep).strip("_")[:80] or "media"
+
+
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def validate_media_assets(assets, requirements, mode: str,
+                          candidates_by_req: dict | None = None,
+                          cache=None) -> list[str]:
+    """Cheap semantic integrity checks for persisted MediaAsset artifacts.
+
+    This validates bindings/provenance and cache references without reopening
+    and decoding every blob. Full byte validation remains a download concern.
+    """
+    from videotool.editorial.media.licensing import license_allowed
+
+    errors: list[str] = []
+    req_by_id = {r.requirement_id: r for r in requirements}
+    candidate_maps = {
+        rid: {c.candidate_id: c for c in candidates}
+        for rid, candidates in (candidates_by_req or {}).items()}
+    for index, asset in enumerate(assets):
+        label = asset.asset_id or f"asset[{index}]"
+        if not asset.asset_id:
+            errors.append(f"{label}: missing asset_id")
+        req = req_by_id.get(asset.requirement_id)
+        if req is None:
+            errors.append(f"{label}: unknown requirement_id")
+            continue
+        if asset.kind != req.kind:
+            errors.append(f"{label}: kind does not match requirement")
+        if asset.is_placeholder:
+            if mode == "final":
+                errors.append(f"{label}: placeholder forbidden in final mode")
+            continue
+        if not asset.provider or not asset.candidate_id:
+            errors.append(f"{label}: missing provider/candidate provenance")
+        candidate = candidate_maps.get(req.requirement_id, {}).get(
+            asset.candidate_id)
+        if candidates_by_req is not None and candidate is None:
+            errors.append(f"{label}: candidate not present in current search results")
+        if candidate is not None:
+            if asset.provider != candidate.provider:
+                errors.append(f"{label}: provider differs from candidate")
+            if asset.media_url != candidate.media_url:
+                errors.append(f"{label}: media URL differs from candidate")
+            if asset.source_page != candidate.source_page:
+                errors.append(f"{label}: source page differs from candidate")
+            if asset.license_name != candidate.license_name:
+                errors.append(f"{label}: license differs from candidate")
+        if mode == "final" and not license_allowed(asset.license_name):
+            errors.append(f"{label}: license is not allowed")
+        if not _SHA256_RE.fullmatch(asset.checksum or ""):
+            errors.append(f"{label}: invalid SHA-256 checksum")
+        if asset.width <= 0 or asset.height <= 0:
+            errors.append(f"{label}: invalid dimensions")
+        parsed = urllib.parse.urlparse(asset.media_url)
+        allowed_scheme = "fixture" if asset.provider == "fixture" else "https"
+        if parsed.scheme != allowed_scheme or not parsed.netloc:
+            errors.append(f"{label}: invalid media URL")
+        if asset.provider != "fixture":
+            source = urllib.parse.urlparse(asset.source_page)
+            if source.scheme != "https" or not source.netloc:
+                errors.append(f"{label}: missing/invalid source page")
+        if not asset.attribution.get("license_name"):
+            errors.append(f"{label}: attribution license missing")
+        if cache is not None and _SHA256_RE.fullmatch(asset.checksum or ""):
+            if not cache.has_blob(asset.checksum):
+                errors.append(f"{label}: cached blob is missing")
+            if candidate is not None:
+                revision = (candidate.provider_metadata.get("revision")
+                            or candidate.provider_metadata.get("sha1")
+                            or candidate.provider_metadata.get("timestamp") or "")
+                indexed = cache.candidate_checksum(
+                    candidate.candidate_id, candidate.provider,
+                    candidate.media_url, str(revision))
+                if indexed != asset.checksum:
+                    errors.append(f"{label}: candidate cache mapping mismatch")
+    return errors

@@ -18,6 +18,7 @@ clean:
 # source-only archive: no venv, no caches, no generated artifacts
 dist: clean
 	rm -rf videotool/__pycache__ videotool/**/__pycache__ 2>/dev/null || true
+	rm -f videotool-src.zip
 	zip -r videotool-src.zip videotool tests docs pyproject.toml \
 		README.md Makefile conftest.py .gitignore -x '*__pycache__*' '*.pyc'
 	@echo "created videotool-src.zip (source only)"
