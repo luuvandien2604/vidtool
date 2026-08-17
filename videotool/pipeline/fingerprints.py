@@ -33,7 +33,7 @@ STAGE_VERSIONS: dict[str, int] = {
     "visual_history": 4,          # 4: signature semantics changed
     "semantic_anchors": 1,        # Phase 2B phrase/semantic word spans
     "timing_bindings": 1,         # Phase 2B layer-to-anchor bindings
-    "semantic_geometry": 1,       # Phase 2C.1 unresolved semantic constraints
+    "semantic_geometry": 2,       # Phase 2C.1 semantic-first topology
     "motion_plan": 3,             # 3: hard anchors + ordered event lifecycle
     "timeline": 3,                # 3: canonical timing shared with subtitles
 }

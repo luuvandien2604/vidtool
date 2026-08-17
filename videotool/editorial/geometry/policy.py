@@ -144,8 +144,37 @@ class GeometryPolicy:
         density = round(min(1.0, len(text.strip()) / max(1, chars_per_line * max_lines)), 3)
         return preferred_width, round(line_height * lines, 3), density, max_lines
 
+    def reading_direction(self, beat, visual_family: str,
+                          geometry_character: list[str],
+                          hierarchy: list[str],
+                          recent_context: list[str]) -> str:
+        """Choose semantic flow without using coordinates or randomness."""
+        del hierarchy
+        if visual_family == "chronological_timeline":
+            return "CHRONOLOGICAL_HORIZONTAL"
+        if visual_family == "causal_network":
+            return "CAUSE_TO_EFFECT"
+        if visual_family == "geographic_map":
+            return ("ROUTE_FLOW" if len(beat.locations) > 1
+                    or beat.semantic_function.value == "GEOGRAPHIC_MOVEMENT"
+                    else "SPATIAL_FOCUS")
+        if visual_family == "full_frame_cinematic":
+            return "OVERLAY_HIERARCHY"
+        corpus = " ".join(geometry_character).lower()
+        if any(hint in corpus for hint in ("right-to-left", "rtl", "right anchored")):
+            return "RIGHT_TO_LEFT"
+        if any(hint in corpus for hint in ("left-to-right", "ltr", "left anchored")):
+            return "LEFT_TO_RIGHT"
+        # Editorial history deterministically alternates portrait/document bias.
+        rtl_count = sum("reading=RIGHT_TO_LEFT" in item
+                        for item in recent_context)
+        ltr_count = sum("reading=LEFT_TO_RIGHT" in item
+                        for item in recent_context)
+        return "RIGHT_TO_LEFT" if rtl_count < ltr_count else "LEFT_TO_RIGHT"
+
     def style_hints(self, information_density: float,
-                    geometry_character: list[str]) -> GeometryStyleHints:
+                    geometry_character: list[str],
+                    preferred_reading_direction: str) -> GeometryStyleHints:
         corpus = " ".join(geometry_character).lower()
         asymmetry = 0.75 if any(word in corpus for word in
                                 ("asymmetric", "off-axis", "divided")) else 0.45
@@ -153,7 +182,7 @@ class GeometryPolicy:
         return GeometryStyleHints(
             density=max(0.0, min(1.0, information_density)),
             asymmetry=asymmetry,
-            preferred_reading_direction="LEFT_TO_RIGHT",
+            preferred_reading_direction=preferred_reading_direction,
             margin_scale=margin_scale,
             overlap_tolerance=0.0,
             grouping_tightness=0.8,

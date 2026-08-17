@@ -717,19 +717,31 @@ class PipelineRunner:
                 {asset.asset_id for asset in res.assets}).ok
 
         def compute_geometry():
-            beat_by_id = {beat.beat_id: beat for beat in res.beats}
-            asset_by_id = {asset.asset_id: asset for asset in res.assets}
-            binding_by_layer = {
-                (binding.composition_id, binding.layer_id): binding
-                for binding in res.timing_bindings}
+            selection_by_beat = {item.beat_id: item
+                                 for item in res.strategy_plan}
+            composition_by_beat = {item.beat_id: item
+                                   for item in res.compositions}
             history = GeometryHistory()
             plans: list[GeometryPlan] = []
-            for composition in res.compositions:
-                beat = beat_by_id[composition.beat_id]
+            for beat in res.beats:
+                selection = selection_by_beat[beat.beat_id]
+                composition = composition_by_beat.get(beat.beat_id)
+                beat_requirements = [item for item in res.requirements
+                                     if item.beat_id == beat.beat_id]
+                beat_assets = assets_for_beat(
+                    res.assets, res.requirements, beat.beat_id)
+                beat_anchors = [item for item in res.semantic_anchors
+                                if item.beat_id == beat.beat_id]
+                composition_bindings = [
+                    item for item in res.timing_bindings
+                    if composition is not None
+                    and item.composition_id == composition.composition_id]
                 try:
                     plan = self.geometry_builder.build_plan(
-                        beat, composition, asset_by_id, res.art_direction,
-                        binding_by_layer, history.recent())
+                        beat, selection.visual_family,
+                        selection.selected_strategy, beat_assets,
+                        beat_requirements, res.art_direction, beat_anchors,
+                        composition, composition_bindings, history.recent())
                     report = validate_geometry_plan(
                         plan, {asset.asset_id for asset in res.assets})
                     if not report.ok:
@@ -741,7 +753,7 @@ class PipelineRunner:
                         "semantic_geometry", reason,
                         "deterministic semantic geometry fallback")
                     plan = self.geometry_builder.fallback_plan(
-                        beat, composition.visual_family, reason,
+                        beat, selection.visual_family, reason,
                         history.recent())
                 plans.append(plan)
                 history.record(plan.semantic_geometry_signature)
@@ -749,7 +761,8 @@ class PipelineRunner:
 
         geometry_projection = geometry_input_projection(
             res.compositions, res.assets, res.strategy_plan,
-            res.art_direction, res.semantic_anchors, res.timing_bindings)
+            res.art_direction, res.semantic_anchors, res.timing_bindings,
+            res.requirements)
         fp_geometry = stable_hash(
             STAGE_VERSIONS["semantic_geometry"], ep.episode_id,
             beats_semantic_hash, geometry_projection,

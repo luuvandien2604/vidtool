@@ -133,6 +133,9 @@ def validate_geometry_plan(plan: GeometryPlan,
         report.error(f"{plan.beat_id}: duplicate node in reading order")
     if not plan.hierarchy.reading_order:
         report.error(f"{plan.beat_id}: empty reading order")
+    if plan.hierarchy.reading_direction != \
+            plan.style_hints.preferred_reading_direction:
+        report.error(f"{plan.beat_id}: hierarchy and style reading direction disagree")
 
     node_by_id = {node.node_id: node for node in plan.nodes}
     if plan.visual_family == "geographic_map":

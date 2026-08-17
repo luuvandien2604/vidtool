@@ -167,7 +167,7 @@ class VisualNode:
     estimated_width: float | None = None
     estimated_height: float | None = None
     max_lines: int | None = None
-    source_layer_id: str = ""
+    source_layer_id: str | None = None
 
     def to_dict(self) -> dict:
         data = asdict(self)

@@ -7,16 +7,21 @@ from dataclasses import replace
 import pytest
 
 from videotool.artifacts import ArtifactStore
+from videotool.domain.art_direction import EpisodeArtDirection
+from videotool.domain.composition import (CompositionLayer, LayerType,
+                                          VisualComposition)
 from videotool.domain.geometry import (CanvasRegion, ConstraintStrength,
                                        ConstraintType, EdgeType, GeometryHistory,
                                        GeometryPlan, VisualRole)
 from videotool.domain.narration import Narration
+from videotool.domain.semantic_beat import SemanticBeat, SemanticFunction
 from videotool.editorial.geometry import (GEOMETRY_POLICY_VERSION,
                                            GEOMETRY_SIGNATURE_VERSION,
                                            SEMANTIC_GEOMETRY_VERSION,
                                            SemanticGeometryBuilder,
                                            debug_geometry_plan,
                                            geometry_input_projection,
+                                           semantic_geometry_signature,
                                            validate_geometry_plan)
 from videotool.fixtures.berlin_wall import load_episode
 from videotool.pipeline.fingerprints import STAGE_VERSIONS, stable_hash
@@ -44,10 +49,10 @@ def test_geometry_domain_round_trip_and_debug_representation(berlin_run):
 
 
 def test_geometry_versions_are_explicit_and_stage_is_registered():
-    assert SEMANTIC_GEOMETRY_VERSION >= 1
+    assert SEMANTIC_GEOMETRY_VERSION == 2
     assert GEOMETRY_POLICY_VERSION >= 1
-    assert GEOMETRY_SIGNATURE_VERSION >= 1
-    assert STAGE_VERSIONS["semantic_geometry"] >= 1
+    assert GEOMETRY_SIGNATURE_VERSION == 2
+    assert STAGE_VERSIONS["semantic_geometry"] == 2
 
 
 def test_node_bounds_safe_zones_and_constraint_strengths(berlin_run):
@@ -377,6 +382,120 @@ def test_production_geometry_has_no_fixture_vocabulary():
         if any(term in text for term in terms):
             hits.append(str(path))
     assert not hits, hits
+
+
+def _semantic_plan(family: str, *, dates=None, events=None, locations=None,
+                   relationships=None, composition=None, recent=None):
+    beat = SemanticBeat(
+        beat_id="semantic_test", start_sec=1, end_sec=2,
+        narration_text="Semantic geometry test", word_start=0, word_end=3,
+        semantic_function={
+            "chronological_timeline": SemanticFunction.CHRONOLOGY,
+            "causal_network": SemanticFunction.CAUSAL_EXPLANATION,
+            "geographic_map": SemanticFunction.GEOGRAPHIC_MOVEMENT,
+            "document_evidence": SemanticFunction.EVIDENCE,
+            "archival_subject": SemanticFunction.CHARACTER_INTRODUCTION,
+        }.get(family, SemanticFunction.ATMOSPHERE),
+        visual_intent="explain structure", entities=["subject"],
+        dates=list(dates or []), events=list(events or []),
+        locations=list(locations or []),
+        relationships=list(relationships or []))
+    art = EpisodeArtDirection(
+        episode_id="ep", subject="subject", geometry=["asymmetric frames"])
+    return SemanticGeometryBuilder().build_plan(
+        beat, family, "semantic_test_strategy", [], [], art, [],
+        composition, [], list(recent or []))
+
+
+def test_semantic_inventory_can_exceed_bootstrap_layer_count():
+    composition = VisualComposition(
+        composition_id="bootstrap", beat_id="semantic_test",
+        visual_family="chronological_timeline", strategy="legacy",
+        layers=[CompositionLayer("only_layer", LayerType.LABEL,
+                                 0.1, 0.1, 0.2, 0.1)])
+    plan = _semantic_plan(
+        "chronological_timeline", dates=["1989", "1990"],
+        events=["opening", "reunification"], composition=composition)
+    assert len(plan.nodes) == 4 > len(composition.layers)
+    assert sum(node.source_layer_id is None for node in plan.nodes) == 3
+    assert validate_geometry_plan(plan).ok
+
+
+def test_timeline_inventory_is_generated_from_semantic_events_and_dates():
+    plan = _semantic_plan("chronological_timeline", dates=["1989"],
+                          events=["protests", "border opens"])
+    assert len([node for node in plan.nodes
+                if node.role == VisualRole.TIMELINE_NODE]) == 3
+    assert [edge.relationship_type for edge in plan.edges] == [
+        EdgeType.BEFORE, EdgeType.BEFORE]
+
+
+def test_causal_topology_is_generated_from_semantic_relationships():
+    plan = _semantic_plan("causal_network",
+                          relationships=["pressure -> failure",
+                                         "failure -> shutdown"])
+    assert len(plan.nodes) == 3
+    assert [(edge.relationship_type, edge.directed) for edge in plan.edges] == [
+        (EdgeType.CAUSES, True), (EdgeType.CAUSES, True)]
+
+
+def test_map_endpoints_are_generated_from_semantic_locations():
+    plan = _semantic_plan("geographic_map",
+                          locations=["origin", "crossing", "destination"])
+    endpoints = [node for node in plan.nodes
+                 if node.role == VisualRole.CONNECTOR_ENDPOINT]
+    assert len(endpoints) == 3
+    assert any(edge.relationship_type == EdgeType.ROUTE_TO
+               for edge in plan.edges)
+
+
+def test_equivalent_graph_ids_have_the_same_semantic_signature():
+    original = _semantic_plan("causal_network",
+                              relationships=["A -> B", "B -> C"])
+    renamed = GeometryPlan.from_dict(original.to_dict())
+    mapping = {node.node_id: f"generated-id-{index}"
+               for index, node in enumerate(renamed.nodes)}
+    for node in renamed.nodes:
+        node.node_id = mapping[node.node_id]
+    for edge in renamed.edges:
+        edge.source_node_id = mapping[edge.source_node_id]
+        edge.target_node_id = mapping[edge.target_node_id]
+    for group in renamed.groups:
+        group.node_ids = [mapping[item] for item in group.node_ids]
+    for constraint in renamed.constraints:
+        constraint.node_ids = [mapping[item] for item in constraint.node_ids]
+    hierarchy = renamed.hierarchy
+    hierarchy.primary_node_id = mapping[hierarchy.primary_node_id]
+    hierarchy.secondary_node_ids = [mapping[item]
+                                    for item in hierarchy.secondary_node_ids]
+    hierarchy.tertiary_node_ids = [mapping[item]
+                                   for item in hierarchy.tertiary_node_ids]
+    hierarchy.reading_order = [mapping[item] for item in hierarchy.reading_order]
+    assert semantic_geometry_signature(original) == \
+        semantic_geometry_signature(renamed)
+
+
+def test_chain_and_star_topologies_have_different_signatures():
+    chain = _semantic_plan("causal_network",
+                           relationships=["A -> B", "B -> C"])
+    star = _semantic_plan("causal_network",
+                          relationships=["A -> B", "A -> C"])
+    assert chain.semantic_geometry_signature != star.semantic_geometry_signature
+
+
+def test_reading_direction_is_semantic_and_style_agrees():
+    plans = [
+        _semantic_plan("chronological_timeline", events=["one", "two"]),
+        _semantic_plan("causal_network", relationships=["A -> B"]),
+        _semantic_plan("geographic_map", locations=["A", "B"]),
+        _semantic_plan("full_frame_cinematic"),
+    ]
+    directions = {plan.hierarchy.reading_direction for plan in plans}
+    assert directions == {"CHRONOLOGICAL_HORIZONTAL", "CAUSE_TO_EFFECT",
+                          "ROUTE_FLOW", "OVERLAY_HIERARCHY"}
+    assert all(plan.hierarchy.reading_direction
+               == plan.style_hints.preferred_reading_direction
+               for plan in plans)
 
 
 def test_required_constraint_abstractions_are_available():
