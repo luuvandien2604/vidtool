@@ -12,11 +12,13 @@ from videotool.domain.composition import (CompositionLayer, LayerType,
                                           VisualComposition)
 from videotool.domain.geometry import (CanvasRegion, ConstraintStrength,
                                        ConstraintType, EdgeType, GeometryHistory,
-                                       GeometryPlan, VisualRole)
+                                       GeometryPlan, NormalizedRect,
+                                       SolvedPlacement, VisualRole)
 from videotool.domain.narration import Narration
 from videotool.domain.semantic_beat import SemanticBeat, SemanticFunction
 from videotool.editorial.geometry import (GEOMETRY_POLICY_VERSION,
                                            GEOMETRY_SIGNATURE_VERSION,
+                                           GEOMETRY_SOLVER_VERSION,
                                            SEMANTIC_GEOMETRY_VERSION,
                                            SemanticGeometryBuilder,
                                            debug_geometry_plan,
@@ -49,10 +51,11 @@ def test_geometry_domain_round_trip_and_debug_representation(berlin_run):
 
 
 def test_geometry_versions_are_explicit_and_stage_is_registered():
-    assert SEMANTIC_GEOMETRY_VERSION == 2
+    assert SEMANTIC_GEOMETRY_VERSION == 3
     assert GEOMETRY_POLICY_VERSION >= 1
-    assert GEOMETRY_SIGNATURE_VERSION == 2
-    assert STAGE_VERSIONS["semantic_geometry"] == 2
+    assert GEOMETRY_SIGNATURE_VERSION == 3
+    assert GEOMETRY_SOLVER_VERSION == 1
+    assert STAGE_VERSIONS["semantic_geometry"] == 3
 
 
 def test_node_bounds_safe_zones_and_constraint_strengths(berlin_run):
@@ -498,6 +501,133 @@ def test_reading_direction_is_semantic_and_style_agrees():
                for plan in plans)
 
 
+def test_solver_generates_one_valid_placement_per_semantic_node(berlin_run):
+    for plan in berlin_run["result"].geometry_plans:
+        assert plan.solver_candidate_count >= 2
+        assert plan.solver_explanation
+        assert plan.structural_geometry_signature.startswith("solver_v")
+        assert plan.solver_score["hard_constraint_score"] == 1.0
+        assert "total_score" in plan.solver_score
+        assert {item.node_id for item in plan.solved_placements} == {
+            node.node_id for node in plan.nodes}
+        assert len(plan.solved_placements) == len(plan.nodes)
+        for placement in plan.solved_placements:
+            rect = placement.bounds
+            assert 0 <= rect.x <= 1 and 0 <= rect.y <= 1
+            assert rect.x + rect.width <= 1.000001
+            assert rect.y + rect.height <= 1.000001
+        assert validate_geometry_plan(plan).ok
+
+
+def test_solver_is_topology_aware_for_timeline_causal_map_and_document():
+    timeline = _semantic_plan("chronological_timeline",
+                              dates=["1988", "1989", "1990"])
+    centers = [
+        next(p.bounds.x + p.bounds.width / 2 for p in timeline.solved_placements
+             if p.node_id == node_id)
+        for node_id in timeline.hierarchy.reading_order
+    ]
+    assert centers == sorted(centers)
+
+    causal = _semantic_plan("causal_network",
+                            relationships=["A -> B", "A -> C"])
+    by_id = {p.node_id: p.bounds for p in causal.solved_placements}
+    for edge in causal.edges:
+        assert by_id[edge.source_node_id].x <= by_id[edge.target_node_id].x
+
+    mapped = _semantic_plan("geographic_map", locations=["A", "B", "C"])
+    map_rect = next(p.bounds for p in mapped.solved_placements
+                    if next(n for n in mapped.nodes
+                            if n.node_id == p.node_id).role == VisualRole.MAP)
+    for placement in mapped.solved_placements:
+        node = next(n for n in mapped.nodes if n.node_id == placement.node_id)
+        if node.role == VisualRole.CONNECTOR_ENDPOINT:
+            assert map_rect.x <= placement.bounds.x
+            assert placement.bounds.x + placement.bounds.width <= \
+                map_rect.x + map_rect.width
+
+    document = _semantic_plan("document_evidence")
+    assert validate_geometry_plan(document).ok
+    contained = [c for c in document.constraints
+                 if c.constraint_type == ConstraintType.CONTAINED_IN]
+    assert contained
+
+
+def test_structural_signature_excludes_asset_ids_and_absolute_timing():
+    first = _semantic_plan("full_frame_cinematic")
+    second = GeometryPlan.from_dict(first.to_dict())
+    second.nodes[0].asset_id = "different:file:name"
+    second.nodes[0].timing_anchor_id = "later-anchor"
+    assert first.structural_geometry_signature == \
+        second.structural_geometry_signature
+
+
+def test_history_aware_selection_penalizes_recent_exact_geometry():
+    first = _semantic_plan("full_frame_cinematic")
+    repeated = _semantic_plan(
+        "full_frame_cinematic",
+        recent=[first.structural_geometry_signature])
+    assert repeated.solver_score["novelty_score"] < 1.0
+    assert repeated.solver_score["hard_constraint_score"] == 1.0
+
+
+def test_meta_consistent_solved_geometry_corruption_invalidates(tmp_path):
+    root = tmp_path / "artifacts"
+    run_berlin(root)
+    store = ArtifactStore(root)
+    episode_id = "berlin_wall_phase1"
+    payload = store.load(episode_id, "semantic_geometry")
+    payload[0]["solved_placements"][0]["bounds"]["y"] = 0.90
+    store.save(episode_id, "semantic_geometry", payload)
+    meta = store.load(episode_id, "stage_meta")
+    meta["semantic_geometry"]["output_hash"] = stable_hash(payload)
+    store.save(episode_id, "stage_meta", meta)
+    result = run_berlin(root)
+    assert result.ok
+    assert result.manifest["stages"]["semantic_geometry"]["status"] == \
+        "invalidated"
+
+
+def test_solver_rejects_hard_overlap_when_overlap_is_prohibited():
+    plan = _semantic_plan("chronological_timeline",
+                          events=["one", "two", "three"])
+    broken = GeometryPlan.from_dict(plan.to_dict())
+    first = broken.solved_placements[0].bounds
+    broken.solved_placements[1] = SolvedPlacement(
+        broken.solved_placements[1].node_id,
+        NormalizedRect(first.x, first.y, first.width, first.height),
+        broken.solved_placements[1].z_index,
+        broken.solved_placements[1].operator,
+        broken.solved_placements[1].region)
+    assert any("overlap" in error
+               for error in validate_geometry_plan(broken).errors)
+
+
+def test_timing_only_resume_still_keeps_semantic_geometry(tmp_path):
+    root = tmp_path / "artifacts"
+    run_berlin(root)
+    store = ArtifactStore(root)
+    episode_id = "berlin_wall_phase1"
+    timing = store.load(episode_id, "narration_timing")
+    timing["words"][0]["start_sec"] += 0.25
+    timing["words"][0]["end_sec"] += 0.25
+    store.save(episode_id, "narration_timing", timing)
+    meta = store.load(episode_id, "stage_meta")
+    meta["narration_timing"]["output_hash"] = stable_hash(timing)
+    store.save(episode_id, "stage_meta", meta)
+    result = run_berlin(root)
+    assert result.manifest["stages"]["semantic_geometry"]["status"] == "resumed"
+
+
+def test_bootstrap_composition_coordinates_are_not_mutated_by_solver(tmp_path):
+    root = tmp_path / "artifacts"
+    result = run_berlin(root)
+    stored = ArtifactStore(root).load("berlin_wall_phase1",
+                                      "visual_compositions")
+    assert stored == [composition.to_dict()
+                      for composition in result.compositions]
+
+
 def test_required_constraint_abstractions_are_available():
     required = {
         "INSIDE_CANVAS", "OUTSIDE_SAFE_ZONE", "MIN_SIZE", "MAX_SIZE",
@@ -505,6 +635,7 @@ def test_required_constraint_abstractions_are_available():
         "FAR_FROM", "ALIGN", "STACK", "ORDER_LEFT_TO_RIGHT",
         "ORDER_TOP_TO_BOTTOM", "NO_OVERLAP", "CONTAINED_IN", "CONNECT",
         "ANCHOR_TO", "GROUP", "BALANCE", "READING_ORDER",
+        "SUBTITLE_EXCLUSION", "MIN_DISTANCE",
     }
     assert required <= {item.value for item in ConstraintType}
     assert {"HARD", "STRONG", "MEDIUM", "WEAK"} == {

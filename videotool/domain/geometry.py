@@ -1,4 +1,4 @@
-"""Renderer-independent semantic geometry planning models (Phase 2C.1)."""
+"""Renderer-independent semantic geometry planning and solving models."""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -79,6 +79,8 @@ class ConstraintType(str, Enum):
     GROUP = "GROUP"
     BALANCE = "BALANCE"
     READING_ORDER = "READING_ORDER"
+    SUBTITLE_EXCLUSION = "SUBTITLE_EXCLUSION"
+    MIN_DISTANCE = "MIN_DISTANCE"
 
 
 class EdgeType(str, Enum):
@@ -296,6 +298,38 @@ class GeometryStyleHints:
 
 
 @dataclass
+class SolvedPlacement:
+    node_id: str
+    bounds: NormalizedRect
+    z_index: int
+    operator: str
+    region: CanvasRegion
+    crop_loss: float = 0.0
+    alignment: str = ""
+    source_constraint_ids: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "node_id": self.node_id,
+            "bounds": self.bounds.to_dict(),
+            "z_index": self.z_index,
+            "operator": self.operator,
+            "region": self.region.value,
+            "crop_loss": self.crop_loss,
+            "alignment": self.alignment,
+            "source_constraint_ids": list(self.source_constraint_ids),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict) -> "SolvedPlacement":
+        data = dict(payload)
+        data["bounds"] = NormalizedRect.from_dict(data["bounds"])
+        data["region"] = CanvasRegion(data["region"])
+        data["source_constraint_ids"] = list(data.get("source_constraint_ids", []))
+        return cls(**data)
+
+
+@dataclass
 class GeometryPlan:
     beat_id: str
     visual_family: str
@@ -309,6 +343,11 @@ class GeometryPlan:
     style_hints: GeometryStyleHints
     semantic_geometry_signature: str
     recent_geometry_context: list[str] = field(default_factory=list)
+    solved_placements: list[SolvedPlacement] = field(default_factory=list)
+    solver_candidate_count: int = 0
+    solver_score: dict = field(default_factory=dict)
+    solver_explanation: str = ""
+    structural_geometry_signature: str = ""
     is_fallback: bool = False
     repair_reason: str = ""
 
@@ -327,6 +366,12 @@ class GeometryPlan:
             "style_hints": self.style_hints.to_dict(),
             "semantic_geometry_signature": self.semantic_geometry_signature,
             "recent_geometry_context": list(self.recent_geometry_context),
+            "solved_placements": [placement.to_dict()
+                                  for placement in self.solved_placements],
+            "solver_candidate_count": self.solver_candidate_count,
+            "solver_score": dict(self.solver_score),
+            "solver_explanation": self.solver_explanation,
+            "structural_geometry_signature": self.structural_geometry_signature,
             "is_fallback": self.is_fallback,
             "repair_reason": self.repair_reason,
         }
@@ -348,6 +393,13 @@ class GeometryPlan:
             style_hints=GeometryStyleHints.from_dict(payload["style_hints"]),
             semantic_geometry_signature=payload["semantic_geometry_signature"],
             recent_geometry_context=list(payload.get("recent_geometry_context", [])),
+            solved_placements=[SolvedPlacement.from_dict(item)
+                               for item in payload.get("solved_placements", [])],
+            solver_candidate_count=payload.get("solver_candidate_count", 0),
+            solver_score=dict(payload.get("solver_score", {})),
+            solver_explanation=payload.get("solver_explanation", ""),
+            structural_geometry_signature=payload.get(
+                "structural_geometry_signature", ""),
             is_fallback=payload.get("is_fallback", False),
             repair_reason=payload.get("repair_reason", ""),
         )

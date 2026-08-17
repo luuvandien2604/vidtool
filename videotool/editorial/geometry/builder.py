@@ -14,10 +14,11 @@ from videotool.domain.timing import SemanticAnchor, TimingBinding
 
 from .planner import SemanticNodePlanner
 from .policy import GeometryPolicy
+from .solver import GeometrySolver
 
-SEMANTIC_GEOMETRY_VERSION = 2
+SEMANTIC_GEOMETRY_VERSION = 3
 GEOMETRY_POLICY_VERSION = 1
-GEOMETRY_SIGNATURE_VERSION = 2
+GEOMETRY_SIGNATURE_VERSION = 3
 
 
 def semantic_geometry_signature(plan: GeometryPlan) -> str:
@@ -118,6 +119,7 @@ class SemanticGeometryBuilder:
     def __init__(self, policy: GeometryPolicy | None = None):
         self.policy = policy or GeometryPolicy()
         self.node_planner = SemanticNodePlanner(self.policy)
+        self.solver = GeometrySolver()
 
     def build_plan(self, beat: SemanticBeat, visual_family: str,
                    selected_strategy: str, assets: list[MediaAsset],
@@ -171,7 +173,7 @@ class SemanticGeometryBuilder:
             semantic_geometry_signature="",
             recent_geometry_context=list(recent_context or []))
         plan.semantic_geometry_signature = semantic_geometry_signature(plan)
-        return plan
+        return self.solver.solve(plan)
 
     def fallback_plan(self, beat: SemanticBeat, visual_family: str,
                       reason: str, recent_context: list[str] | None = None
@@ -199,15 +201,21 @@ class SemanticGeometryBuilder:
                 "Fallback critical content must not occupy subtitle space."),
         ]
         plan = GeometryPlan(
-            beat.beat_id, visual_family, [node], [], [],
-            VisualHierarchy(node.node_id, reading_order=[node.node_id],
-                            reading_direction=direction),
-            constraints, CanvasSpec(), self.policy.safe_zones(),
-            self.policy.style_hints(beat.information_density, [], direction), "",
-            list(recent_context or []), True, reason)
+            beat_id=beat.beat_id, visual_family=visual_family, nodes=[node],
+            groups=[], edges=[],
+            hierarchy=VisualHierarchy(node.node_id,
+                                      reading_order=[node.node_id],
+                                      reading_direction=direction),
+            constraints=constraints, canvas=CanvasSpec(),
+            safe_zones=self.policy.safe_zones(),
+            style_hints=self.policy.style_hints(
+                beat.information_density, [], direction),
+            semantic_geometry_signature="",
+            recent_geometry_context=list(recent_context or []),
+            is_fallback=True, repair_reason=reason)
         plan.semantic_geometry_signature = (semantic_geometry_signature(plan)
                                             + "|fallback=true")
-        return plan
+        return self.solver.solve(plan)
 
     def _map_bootstrap_metadata(self, nodes: dict[str, VisualNode],
                                 composition: VisualComposition | None,
@@ -291,6 +299,11 @@ def debug_geometry_plan(plan: GeometryPlan) -> str:
     for node in plan.nodes:
         lines.append(f"- {node.node_id} [{node.role.value}] "
                      f"importance={node.importance:.2f} salience={node.salience:.2f}")
+    if plan.solved_placements:
+        lines.extend(["", "Solved placements:"])
+        lines.extend(f"- {item.node_id} {item.bounds.x:.2f},{item.bounds.y:.2f} "
+                     f"{item.bounds.width:.2f}x{item.bounds.height:.2f} "
+                     f"via {item.operator}" for item in plan.solved_placements)
     lines.extend(["", "Groups:"])
     lines.extend(f"- {group.group_id} ({', '.join(group.node_ids)})"
                  for group in plan.groups)
@@ -302,5 +315,7 @@ def debug_geometry_plan(plan: GeometryPlan) -> str:
                  f"[{item.strength.value}]" for item in plan.constraints)
     lines.extend(["", f"Reading: {' -> '.join(plan.hierarchy.reading_order)} "
                   f"({plan.hierarchy.reading_direction})", "",
+                  f"Solved signature: {plan.structural_geometry_signature}",
+                  f"Solver: {plan.solver_explanation}", "",
                   f"Signature: {plan.semantic_geometry_signature}"])
     return "\n".join(lines)

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from videotool.domain.geometry import (ConstraintType, EdgeType, GeometryPlan,
-                                       VisualRole)
+                                       NormalizedRect, VisualRole)
 from videotool.editorial.validation import ValidationReport
 
 
@@ -171,7 +171,92 @@ def validate_geometry_plan(plan: GeometryPlan,
 
     if not plan.semantic_geometry_signature:
         report.error(f"{plan.beat_id}: semantic geometry signature missing")
+    _validate_solved_geometry(plan, report)
     return report
+
+
+def _validate_solved_geometry(plan: GeometryPlan, report: ValidationReport) -> None:
+    if not plan.solved_placements:
+        report.error(f"{plan.beat_id}: geometry has no solved placements")
+        return
+    node_ids = {node.node_id for node in plan.nodes}
+    placements = {item.node_id: item for item in plan.solved_placements}
+    if set(placements) != node_ids:
+        report.error(f"{plan.beat_id}: solved placements do not match nodes")
+    if len(placements) != len(plan.solved_placements):
+        report.error(f"{plan.beat_id}: duplicate solved placement")
+    node_by_id = {node.node_id: node for node in plan.nodes}
+    for placement in plan.solved_placements:
+        if placement.node_id not in node_ids:
+            report.error(f"{placement.node_id}: solved placement references unknown node")
+            continue
+        rect = placement.bounds
+        if rect.x < 0 or rect.y < 0 or rect.width <= 0 or rect.height <= 0 \
+                or rect.x + rect.width > 1.0 + 1e-6 \
+                or rect.y + rect.height > 1.0 + 1e-6:
+            report.error(f"{placement.node_id}: solved placement outside canvas")
+        node = node_by_id[placement.node_id]
+        if rect.width + 1e-6 < node.min_width \
+                or rect.height + 1e-6 < node.min_height:
+            report.error(f"{placement.node_id}: solved placement below minimum size")
+        if placement.crop_loss < 0 or placement.crop_loss > 1:
+            report.error(f"{placement.node_id}: invalid crop loss")
+
+    safe_by_id = {zone.zone_id: zone for zone in plan.safe_zones}
+    for constraint in plan.constraints:
+        if any(node_id not in placements for node_id in constraint.node_ids):
+            continue
+        if constraint.constraint_type in {ConstraintType.OUTSIDE_SAFE_ZONE,
+                                          ConstraintType.SUBTITLE_EXCLUSION}:
+            zone_id = constraint.parameters.get("safe_zone_id",
+                                                "subtitle_safe_zone")
+            zone = safe_by_id.get(zone_id)
+            if not zone:
+                continue
+            for node_id in constraint.node_ids:
+                if _intersects(placements[node_id].bounds, zone.bounds):
+                    report.error(f"{node_id}: solved placement intersects {zone_id}")
+        if constraint.constraint_type == ConstraintType.NO_OVERLAP:
+            for left_id, right_id in _pairs(constraint.node_ids):
+                if _intersects(placements[left_id].bounds,
+                               placements[right_id].bounds):
+                    report.error(f"{left_id}/{right_id}: solved placements overlap")
+        if constraint.constraint_type == ConstraintType.CONTAINED_IN \
+                and len(constraint.node_ids) == 2:
+            child_id, parent_id = constraint.node_ids
+            if not _contains(placements[parent_id].bounds,
+                             placements[child_id].bounds):
+                report.error(f"{child_id}: solved placement not contained in {parent_id}")
+    required_scores = {
+        "hard_constraint_score", "overlap_penalty", "safe_zone_score",
+        "hierarchy_score", "reading_flow_score",
+        "semantic_proximity_score", "whitespace_score", "balance_score",
+        "salience_score", "novelty_score", "art_direction_score",
+        "total_score",
+    }
+    if not required_scores <= set(plan.solver_score):
+        report.error(f"{plan.beat_id}: solver score is incomplete")
+    if not plan.solver_explanation:
+        report.error(f"{plan.beat_id}: solver explanation missing")
+    if not plan.structural_geometry_signature:
+        report.error(f"{plan.beat_id}: structural geometry signature missing")
+
+
+def _intersects(a: NormalizedRect, b: NormalizedRect) -> bool:
+    return not (a.x + a.width <= b.x or b.x + b.width <= a.x
+                or a.y + a.height <= b.y or b.y + b.height <= a.y)
+
+
+def _contains(parent: NormalizedRect, child: NormalizedRect) -> bool:
+    return (child.x >= parent.x and child.y >= parent.y
+            and child.x + child.width <= parent.x + parent.width + 1e-6
+            and child.y + child.height <= parent.y + parent.height + 1e-6)
+
+
+def _pairs(items: list[str]):
+    for index, left in enumerate(items):
+        for right in items[index + 1:]:
+            yield left, right
 
 
 def validate_geometry_plans(plans: list[GeometryPlan], beat_ids: set[str],

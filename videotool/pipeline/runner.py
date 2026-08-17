@@ -47,7 +47,9 @@ from videotool.editorial.media import (AcquisitionTrace, MediaAcquisitionConfig,
                                        MediaCandidate, MediaSearchPlan)
 from videotool.editorial.motion import build_motion_plan
 from videotool.editorial.geometry import (
+    GEOMETRY_CANDIDATE_VERSION,
     GEOMETRY_POLICY_VERSION, GEOMETRY_SIGNATURE_VERSION,
+    GEOMETRY_SCORE_VERSION, GEOMETRY_SOLVER_VERSION,
     SEMANTIC_GEOMETRY_VERSION, SemanticGeometryBuilder,
     geometry_input_projection, validate_geometry_plan,
     validate_geometry_plans)
@@ -767,7 +769,8 @@ class PipelineRunner:
             STAGE_VERSIONS["semantic_geometry"], ep.episode_id,
             beats_semantic_hash, geometry_projection,
             SEMANTIC_GEOMETRY_VERSION, GEOMETRY_POLICY_VERSION,
-            GEOMETRY_SIGNATURE_VERSION)
+            GEOMETRY_SIGNATURE_VERSION, GEOMETRY_SOLVER_VERSION,
+            GEOMETRY_CANDIDATE_VERSION, GEOMETRY_SCORE_VERSION)
         geometry_payload = self._stage(
             ep, "semantic_geometry", fp_geometry, compute_geometry,
             resume_valid=geometry_ok)
