@@ -475,9 +475,14 @@ def build_episode_frame_plan(
                         color=accent,
                     ))
 
-            svg_overlay = generate_svg_overlay(connectors, canvas_w=canvas_w, canvas_h=canvas_h, accent_color=accent)
-        else:
-            svg_overlay = None
+        # SVG Overlay (connectors and text node cards/badges)
+        svg_overlay = generate_svg_overlay(
+            connectors=connectors,
+            text_elements=text_elements,
+            canvas_w=canvas_w,
+            canvas_h=canvas_h,
+            accent_color=accent,
+        )
 
         beat_plans.append(BeatFramePlan(
             beat_id=beat_id,
