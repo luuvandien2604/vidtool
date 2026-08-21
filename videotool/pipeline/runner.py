@@ -758,7 +758,7 @@ class PipelineRunner:
                         beat, selection.visual_family, reason,
                         history.recent())
                 plans.append(plan)
-                history.record(plan.semantic_geometry_signature)
+                history.record(plan.structural_geometry_signature)
             return [plan.to_dict() for plan in plans]
 
         geometry_projection = geometry_input_projection(

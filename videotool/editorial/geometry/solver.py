@@ -9,9 +9,9 @@ from videotool.domain.geometry import (CanvasRegion, ConstraintStrength,
                                        GeometryPlan, NormalizedRect,
                                        SolvedPlacement, VisualNode, VisualRole)
 
-GEOMETRY_SOLVER_VERSION = 1
+GEOMETRY_SOLVER_VERSION = 2
 GEOMETRY_CANDIDATE_VERSION = 1
-GEOMETRY_SCORE_VERSION = 1
+GEOMETRY_SCORE_VERSION = 2
 
 
 @dataclass
@@ -300,6 +300,7 @@ class GeometrySolver:
                          candidate: GeometryCandidate) -> list[str]:
         placements = {item.node_id: item for item in candidate.placements}
         violations: list[str] = []
+        node_by_id = {node.node_id: node for node in plan.nodes}
         if set(placements) != {node.node_id for node in plan.nodes}:
             violations.append("missing solved placement")
         for node in plan.nodes:
@@ -338,22 +339,171 @@ class GeometrySolver:
                         and not self._contains(placements[parent].bounds,
                                                placements[child].bounds):
                     violations.append(f"{child}: not contained in {parent}")
+            # -- ASPECT_RATIO ------------------------------------------------
+            if constraint.constraint_type == ConstraintType.ASPECT_RATIO:
+                ratio = constraint.parameters.get("ratio")
+                crop_allowed = constraint.parameters.get("crop_allowed", True)
+                tolerance = 0.15 if crop_allowed else 0.05
+                for node_id in constraint.node_ids:
+                    if node_id not in placements or ratio is None:
+                        continue
+                    rect = placements[node_id].bounds
+                    if rect.height < 1e-9:
+                        violations.append(f"{node_id}: degenerate height")
+                        continue
+                    actual = rect.width / rect.height
+                    if abs(actual - ratio) / max(ratio, 1e-9) > tolerance:
+                        violations.append(
+                            f"{node_id}: aspect ratio {actual:.3f} "
+                            f"violates {ratio:.3f} (tol={tolerance})")
+            # -- CONNECT (graph-level + basic geometry) ----------------------
+            if constraint.constraint_type == ConstraintType.CONNECT \
+                    and len(constraint.node_ids) >= 2:
+                src_id, tgt_id = constraint.node_ids[0], constraint.node_ids[1]
+                if src_id not in placements:
+                    violations.append(f"{src_id}: CONNECT source missing")
+                elif tgt_id not in placements:
+                    violations.append(f"{tgt_id}: CONNECT target missing")
+                else:
+                    sr = placements[src_id].bounds
+                    tr = placements[tgt_id].bounds
+                    # both placements must be finite
+                    if not all(_is_finite(v) for v in
+                               (sr.x, sr.y, sr.width, sr.height,
+                                tr.x, tr.y, tr.width, tr.height)):
+                        violations.append(
+                            f"{src_id}/{tgt_id}: CONNECT non-finite placement")
+                    elif self._distance(sr, tr) < 1e-9:
+                        violations.append(
+                            f"{src_id}/{tgt_id}: CONNECT zero distance")
+            # -- READING_ORDER (declared semantic order) ---------------------
+            if constraint.constraint_type == ConstraintType.READING_ORDER:
+                direction = constraint.parameters.get("direction", "")
+                # Use the declared order from the constraint node_ids list.
+                # Never derive order from positions then validate that.
+                ordered = [nid for nid in constraint.node_ids
+                           if nid in placements]
+                if len(ordered) >= 2:
+                    violations.extend(
+                        _reading_order_violations(ordered, direction,
+                                                  placements))
+            # -- ORDER_LEFT_TO_RIGHT ----------------------------------------
+            if constraint.constraint_type == ConstraintType.ORDER_LEFT_TO_RIGHT:
+                ordered = [nid for nid in constraint.node_ids
+                           if nid in placements]
+                for i in range(len(ordered) - 1):
+                    ax = self._center(placements[ordered[i]].bounds)[0]
+                    bx = self._center(placements[ordered[i + 1]].bounds)[0]
+                    if ax > bx + 0.01:
+                        violations.append(
+                            f"{ordered[i]}/{ordered[i+1]}: "
+                            f"ORDER_LEFT_TO_RIGHT violated")
+            # -- ORDER_TOP_TO_BOTTOM ----------------------------------------
+            if constraint.constraint_type == ConstraintType.ORDER_TOP_TO_BOTTOM:
+                ordered = [nid for nid in constraint.node_ids
+                           if nid in placements]
+                for i in range(len(ordered) - 1):
+                    ay = self._center(placements[ordered[i]].bounds)[1]
+                    by = self._center(placements[ordered[i + 1]].bounds)[1]
+                    if ay > by + 0.01:
+                        violations.append(
+                            f"{ordered[i]}/{ordered[i+1]}: "
+                            f"ORDER_TOP_TO_BOTTOM violated")
+            # -- ALIGN -------------------------------------------------------
+            if constraint.constraint_type == ConstraintType.ALIGN \
+                    and len(constraint.node_ids) >= 2:
+                axis = constraint.parameters.get("axis", "horizontal")
+                anchor = constraint.parameters.get("anchor", "center")
+                tol = constraint.parameters.get("tolerance", 0.03)
+                vals = []
+                for nid in constraint.node_ids:
+                    if nid not in placements:
+                        continue
+                    r = placements[nid].bounds
+                    if axis == "horizontal":
+                        if anchor == "top":
+                            vals.append((nid, r.y))
+                        elif anchor == "bottom":
+                            vals.append((nid, r.y + r.height))
+                        else:
+                            vals.append((nid, r.y + r.height / 2))
+                    else:
+                        if anchor == "left":
+                            vals.append((nid, r.x))
+                        elif anchor == "right":
+                            vals.append((nid, r.x + r.width))
+                        else:
+                            vals.append((nid, r.x + r.width / 2))
+                if len(vals) >= 2:
+                    ref = vals[0][1]
+                    for nid, v in vals[1:]:
+                        if abs(v - ref) > tol:
+                            violations.append(
+                                f"{nid}: ALIGN {axis}/{anchor} "
+                                f"off by {abs(v - ref):.4f}")
+            # -- STACK -------------------------------------------------------
+            if constraint.constraint_type == ConstraintType.STACK \
+                    and len(constraint.node_ids) >= 2:
+                axis = constraint.parameters.get("axis", "vertical")
+                gap_tol = constraint.parameters.get("gap_tolerance", 0.06)
+                ordered = [nid for nid in constraint.node_ids
+                           if nid in placements]
+                for i in range(len(ordered) - 1):
+                    a = placements[ordered[i]].bounds
+                    b = placements[ordered[i + 1]].bounds
+                    if axis == "vertical":
+                        gap = b.y - (a.y + a.height)
+                    else:
+                        gap = b.x - (a.x + a.width)
+                    if gap < -1e-6 or gap > gap_tol:
+                        violations.append(
+                            f"{ordered[i]}/{ordered[i+1]}: "
+                            f"STACK {axis} gap={gap:.4f}")
+            # -- MIN_DISTANCE ------------------------------------------------
+            if constraint.constraint_type == ConstraintType.MIN_DISTANCE \
+                    and len(constraint.node_ids) >= 2:
+                min_dist = constraint.parameters.get("min_distance", 0.0)
+                for lid, rid in _pairs(constraint.node_ids):
+                    if lid in placements and rid in placements:
+                        dist = self._distance(placements[lid].bounds,
+                                              placements[rid].bounds)
+                        if dist + 1e-6 < min_dist:
+                            violations.append(
+                                f"{lid}/{rid}: MIN_DISTANCE "
+                                f"{dist:.4f} < {min_dist:.4f}")
+            # -- MAX_SIZE ----------------------------------------------------
+            if constraint.constraint_type == ConstraintType.MAX_SIZE:
+                max_w = constraint.parameters.get("max_width", 1.0)
+                max_h = constraint.parameters.get("max_height", 1.0)
+                for nid in constraint.node_ids:
+                    if nid not in placements:
+                        continue
+                    r = placements[nid].bounds
+                    if r.width > max_w + 1e-6 or r.height > max_h + 1e-6:
+                        violations.append(
+                            f"{nid}: MAX_SIZE {r.width:.4f}x"
+                            f"{r.height:.4f} exceeds "
+                            f"{max_w:.4f}x{max_h:.4f}")
         return violations
 
     def _hierarchy_score(self, plan, candidate) -> float:
         by_id = {item.node_id: item for item in candidate.placements}
-        primary = by_id[plan.hierarchy.primary_node_id].bounds
+        primary_placement = by_id.get(plan.hierarchy.primary_node_id)
+        if not primary_placement:
+            return 0.0
+        primary = primary_placement.bounds
         primary_area = primary.width * primary.height
         others = [p.bounds.width * p.bounds.height for p in candidate.placements
                   if p.node_id != plan.hierarchy.primary_node_id]
         return 1.0 if not others or primary_area >= max(others) else 0.35
 
     def _reading_flow_score(self, plan, candidate) -> float:
-        centers = [self._center(next(p.bounds for p in candidate.placements
-                                     if p.node_id == node_id))
-                   for node_id in plan.hierarchy.reading_order]
-        if len(centers) < 2:
+        by_id = {item.node_id: item for item in candidate.placements}
+        placed_order = [node_id for node_id in plan.hierarchy.reading_order
+                        if node_id in by_id]
+        if len(placed_order) < 2:
             return 1.0
+        centers = [self._center(by_id[node_id].bounds) for node_id in placed_order]
         direction = plan.hierarchy.reading_direction
         if direction in {"LEFT_TO_RIGHT", "CHRONOLOGICAL_HORIZONTAL",
                          "CAUSE_TO_EFFECT", "ROUTE_FLOW"}:
@@ -370,13 +520,16 @@ class GeometrySolver:
             return 1.0
         scores = []
         for edge in plan.edges:
-            scores.append(1.0 - min(1.0, self._distance(
-                by_id[edge.source_node_id].bounds,
-                by_id[edge.target_node_id].bounds)))
+            if edge.source_node_id in by_id and edge.target_node_id in by_id:
+                scores.append(1.0 - min(1.0, self._distance(
+                    by_id[edge.source_node_id].bounds,
+                    by_id[edge.target_node_id].bounds)))
         for group in plan.groups:
-            group_rects = [by_id[node_id].bounds for node_id in group.node_ids]
-            scores.append(1.0 - min(1.0, self._spread(group_rects)))
-        return sum(scores) / len(scores)
+            group_rects = [by_id[node_id].bounds for node_id in group.node_ids
+                           if node_id in by_id]
+            if len(group_rects) >= 2:
+                scores.append(1.0 - min(1.0, self._spread(group_rects)))
+        return sum(scores) / len(scores) if scores else 1.0
 
     def _balance_score(self, placements) -> float:
         if not placements:
@@ -391,7 +544,8 @@ class GeometrySolver:
         total = sum(node.salience for node in plan.nodes) or 1.0
         return sum(node.salience * by_id[node.node_id].bounds.width
                    * by_id[node.node_id].bounds.height
-                   for node in plan.nodes) / total * 4
+                   for node in plan.nodes
+                   if node.node_id in by_id) / total * 4
 
     def _novelty_score(self, plan, signature: str) -> float:
         if signature in plan.recent_geometry_context:
@@ -468,19 +622,25 @@ def structural_geometry_signature(plan: GeometryPlan,
     regions = []
     scales = []
     for node_id in order:
-        placement = placements[node_id]
-        node = node_by_id[node_id]
+        placement = placements.get(node_id)
+        node = node_by_id.get(node_id)
+        if not placement or not node:
+            continue
         area = placement.bounds.width * placement.bounds.height
         scale = "large" if area >= 0.18 else ("medium" if area >= 0.06 else "small")
         regions.append(f"{node.role.value}@{placement.region.value}:{scale}")
         scales.append(scale)
     edge_shape = sorted(
         f"{node_by_id[e.source_node_id].role.value}->{e.relationship_type.value}->"
-        f"{node_by_id[e.target_node_id].role.value}" for e in plan.edges)
-    hero = placements[plan.hierarchy.primary_node_id]
-    hero_center = GeometrySolver._center(hero.bounds)
-    hero_pos = ("left" if hero_center[0] < 0.4 else
-                "right" if hero_center[0] > 0.6 else "center")
+        f"{node_by_id[e.target_node_id].role.value}" for e in plan.edges
+        if e.source_node_id in node_by_id and e.target_node_id in node_by_id)
+    hero = placements.get(plan.hierarchy.primary_node_id)
+    if hero:
+        hero_center = GeometrySolver._center(hero.bounds)
+        hero_pos = ("left" if hero_center[0] < 0.4 else
+                    "right" if hero_center[0] > 0.6 else "center")
+    else:
+        hero_pos = "none"
     axis = dominant_axis(candidate.placements)
     alignment = "+".join(sorted({p.alignment or "none"
                                  for p in candidate.placements}))
@@ -512,3 +672,42 @@ def _placement_pairs(items: list[SolvedPlacement]):
     for index, left in enumerate(items):
         for right in items[index + 1:]:
             yield left, right
+
+
+def _is_finite(value: float) -> bool:
+    import math
+    return math.isfinite(value)
+
+
+def _reading_order_violations(ordered: list[str], direction: str,
+                              placements: dict) -> list[str]:
+    """Validate declared reading order against final solved positions.
+
+    The ``ordered`` list is the *declared semantic order* from the constraint,
+    not an order derived from positions.  This prevents the tautology of
+    deriving then validating against the same positions.
+    """
+    violations: list[str] = []
+    horizontal = direction in {
+        "LEFT_TO_RIGHT", "CHRONOLOGICAL_HORIZONTAL",
+        "CAUSE_TO_EFFECT", "ROUTE_FLOW",
+    }
+    vertical = direction in {"TOP_TO_BOTTOM"}
+    if not horizontal and not vertical:
+        return violations
+    for i in range(len(ordered) - 1):
+        a = placements[ordered[i]].bounds
+        b = placements[ordered[i + 1]].bounds
+        ax = a.x + a.width / 2
+        bx = b.x + b.width / 2
+        ay = a.y + a.height / 2
+        by = b.y + b.height / 2
+        if horizontal and ax > bx + 0.01:
+            violations.append(
+                f"{ordered[i]}/{ordered[i+1]}: "
+                f"READING_ORDER {direction} x-violated")
+        if vertical and ay > by + 0.01:
+            violations.append(
+                f"{ordered[i]}/{ordered[i+1]}: "
+                f"READING_ORDER {direction} y-violated")
+    return violations

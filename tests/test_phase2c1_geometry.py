@@ -54,8 +54,8 @@ def test_geometry_versions_are_explicit_and_stage_is_registered():
     assert SEMANTIC_GEOMETRY_VERSION == 3
     assert GEOMETRY_POLICY_VERSION >= 1
     assert GEOMETRY_SIGNATURE_VERSION == 3
-    assert GEOMETRY_SOLVER_VERSION == 1
-    assert STAGE_VERSIONS["semantic_geometry"] == 3
+    assert GEOMETRY_SOLVER_VERSION == 2
+    assert STAGE_VERSIONS["semantic_geometry"] == 4
 
 
 def test_node_bounds_safe_zones_and_constraint_strengths(berlin_run):
@@ -158,17 +158,21 @@ def test_asset_aspect_ratio_and_text_estimates_propagate(berlin_run):
 def test_geometry_signature_and_history_are_semantic_and_deterministic(
         berlin_run):
     result = berlin_run["result"]
-    signatures = [plan.semantic_geometry_signature
-                  for plan in result.geometry_plans]
-    assert len(set(signatures)) >= 5
+    # Semantic signatures are still distinct and rich.
+    semantic_sigs = [plan.semantic_geometry_signature
+                     for plan in result.geometry_plans]
+    assert len(set(semantic_sigs)) >= 5
+    assert all("primary=" in sig and "reading=" in sig
+               for sig in semantic_sigs)
+    # History now records *structural* signatures (solved geometry).
+    structural_sigs = [plan.structural_geometry_signature
+                       for plan in result.geometry_plans]
     history = GeometryHistory(max_window=5)
-    for index, signature in enumerate(signatures):
+    for index, sig in enumerate(structural_sigs):
         assert result.geometry_plans[index].recent_geometry_context == \
             history.recent()
-        history.record(signature)
-    assert history.recent() == signatures[-5:]
-    assert all("primary=" in signature and "reading=" in signature
-               for signature in signatures)
+        history.record(sig)
+    assert history.recent() == structural_sigs[-5:]
 
 
 def test_berlin_semantic_geometry_acceptance(berlin_run):

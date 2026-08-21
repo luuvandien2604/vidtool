@@ -406,7 +406,12 @@ class GeometryPlan:
 
 
 class GeometryHistory:
-    """Recent semantic structure only; never stores solved coordinates."""
+    """Recent structural geometry signatures for novelty/anti-template scoring.
+
+    Records the *structural* signature (solved spatial layout) of each beat
+    after the geometry solver finalises placement.  The semantic topology
+    signature is a separate concept and is NOT recorded here.
+    """
 
     def __init__(self, signatures: list[str] | None = None,
                  max_window: int = 5):
