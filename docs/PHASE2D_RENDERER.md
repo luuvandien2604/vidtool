@@ -120,9 +120,18 @@ Tests are cleanly divided between fast, deterministic pure-Python tests and opt-
 
 ---
 
-## 6. Known Limitations & Future Work
+## 6. Known Limitations
 
 1. **Silent Video Only (Phase 2D Scope Discipline)**: Audio narration synthesis and mixing remain deferred to Phase 2E. The current renderer produces silent video with burned-in subtitles.
 2. **Hard Cuts Only**: Transitions between beats are hard cuts. Dissolves, wipes, and map zooms across beat boundaries will be implemented via FFmpeg xfade transition graphs.
 3. **Simple Ken Burns Trajectories**: Ken Burns motion currently implements smooth linear scale adjustments (`zoompan`). Non-linear easing (smoothstep, cubic bezier) can be integrated in future motion passes.
 4. **Static Vector Overlays**: Connector lines are rendered static across the beat duration rather than progressively drawing on with `ROUTE_DRAW` stroke animation.
+5. **Text/connector-only families render visually sparse**: Beats resolved primarily to `TextRenderElement`/`ConnectorRenderElement` with no backing `MediaRenderElement` (observed in `causal_network` and `chronological_timeline` beats of the `berlin_wall` fixture, e.g. beat_0005 ~27s, beat_0006 ~32s) render as floating text and thin lines on an empty canvas. There is no background shape, card, or boundary to anchor a node visually — the semantic geometry solver's placement is correct, but FFmpeg's primitive drawing tools (text + line/arrow) don't give these nodes enough visual weight compared to image-backed beats. This is expected for a spike (see `svg_overlay.py`/`ConnectorRenderElement` scope), not a bug — flagged here as a scoping input for the next phase, not something to patch within this spike.
+
+---
+
+## 7. Next Recommended Step
+
+1. **Higher-Fidelity Rendering Backend for Sparse Families**: Evaluate a higher-fidelity rendering backend (e.g. Remotion / React-HTML-Canvas) scoped specifically to the families found visually thin in this spike (`causal_network`, `chronological_timeline`, and any other text/connector-dominant family), routed dynamically through the `Renderer` protocol and registry (`videotool.render.registry`) established in Phase 2D. This preserves the fast, robust FFmpeg renderer for image-backed families (`archival_subject`, `geographic_map`, `document_evidence`, `full_frame_cinematic`) without requiring a wholesale replacement.
+2. **Audio Track Synthesis & Mixing**: Wire narration TTS audio and background score mixing to the final video muxing pass.
+3. **Transition Matrix & Route Animation**: Implement cross-beat transitions (xfade) and progressive vector stroke animations (`ROUTE_DRAW`).
