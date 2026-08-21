@@ -1,4 +1,4 @@
-"""Narration timing provider abstraction and deterministic offline provider."""
+"""Narration timing provider abstraction and provider registry."""
 from __future__ import annotations
 
 from dataclasses import replace
@@ -6,6 +6,7 @@ from typing import Protocol
 
 from videotool.domain.narration import Narration, synthetic_word_timings
 from videotool.domain.timing import NarrationTiming
+from videotool.providers.azure_speech import AzureSpeechTimingProvider
 
 NARRATION_TIMING_VERSION = 1
 
@@ -37,3 +38,35 @@ class DeterministicNarrationTimingProvider:
             words=tuple(words), duration_sec=round(duration, 3), source=source,
             provider=self.provider_id, provider_version=self.provider_version,
             is_estimated=estimated)
+
+
+TIMING_PROVIDERS: dict[str, type] = {}
+
+
+def register_timing_provider(name: str, cls: type) -> None:
+    """Register a timing provider implementation under a canonical name."""
+    TIMING_PROVIDERS[name] = cls
+
+
+register_timing_provider("deterministic", DeterministicNarrationTimingProvider)
+register_timing_provider("azure", AzureSpeechTimingProvider)
+
+
+def build_timing_provider(name: str, **kwargs) -> NarrationTimingProvider:
+    """Build a timing provider instance from registry."""
+    if name not in TIMING_PROVIDERS:
+        raise KeyError(
+            f"unknown timing provider '{name}' (have: {sorted(TIMING_PROVIDERS)})"
+        )
+    return TIMING_PROVIDERS[name](**kwargs)
+
+
+__all__ = [
+    "NARRATION_TIMING_VERSION",
+    "NarrationTimingProvider",
+    "DeterministicNarrationTimingProvider",
+    "AzureSpeechTimingProvider",
+    "TIMING_PROVIDERS",
+    "register_timing_provider",
+    "build_timing_provider",
+]

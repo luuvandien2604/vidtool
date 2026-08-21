@@ -1,7 +1,7 @@
-"""Documentary video rendering subsystem (Phase 2D/2E).
+"""Documentary video rendering subsystem (Phase 2D/2E/2F).
 
 Provides renderer-independent frame planning, ASS subtitle generation,
-audio synthesis plumbing, and concrete FFmpeg video rendering backends.
+audio synthesis plumbing (silence + Azure Speech TTS), and concrete FFmpeg video rendering backends.
 """
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from videotool.artifacts import ArtifactStore
 from videotool.domain.narration import Narration, NarrationAudio
 from videotool.domain.timing import NarrationTiming
 from videotool.providers.audio import (AUDIO_PROVIDERS,
+                                       AzureSpeechAudioProvider,
                                        NarrationAudioProvider,
                                        SyntheticSilenceAudioProvider,
                                        build_audio_provider,
@@ -33,6 +34,7 @@ def render_episode(episode_id: str, store: ArtifactStore, output_path: str | Pat
                    renderer_name: str = "ffmpeg",
                    audio_provider_name: str | None = "silence",
                    click_track: bool = False,
+                   voice: str | None = None,
                    audio: NarrationAudio | None = None) -> RenderResult:
     """Convenience entry point: loads episode artifacts, builds frame plan, and renders video."""
     # Check that required artifacts exist
@@ -78,7 +80,15 @@ def render_episode(episode_id: str, store: ArtifactStore, output_path: str | Pat
                 provider_version=1,
             )
 
-        provider = build_audio_provider(audio_provider_name, click_track=click_track)
+        kwargs = {}
+        if audio_provider_name == "silence":
+            kwargs["click_track"] = click_track
+        elif audio_provider_name == "azure":
+            if voice:
+                kwargs["voice"] = voice
+            kwargs["cache_dir"] = store.root / "tts_cache"
+
+        provider = build_audio_provider(audio_provider_name, **kwargs)
         audio_dest = store.episode_dir(episode_id) / "narration_audio.wav"
         audio = provider.synthesize(narration, timing, out_path=audio_dest, timeline=timeline)
 
@@ -111,6 +121,7 @@ __all__ = [
     "NarrationAudio",
     "NarrationAudioProvider",
     "SyntheticSilenceAudioProvider",
+    "AzureSpeechAudioProvider",
     "AUDIO_PROVIDERS",
     "register_audio_provider",
     "build_audio_provider",

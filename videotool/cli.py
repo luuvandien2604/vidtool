@@ -2,7 +2,7 @@
 
 Usage:
     python -m videotool.cli berlin_wall [--mode draft|final] [--artifacts DIR] [--force]
-    python -m videotool.cli render berlin_wall [--artifacts DIR] [--out out.mp4] [--renderer ffmpeg] [--audio-provider silence] [--no-audio]
+    python -m videotool.cli render berlin_wall [--artifacts DIR] [--out out.mp4] [--renderer ffmpeg] [--audio-provider azure|silence] [--no-audio]
 """
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ from pathlib import Path
 
 from videotool.artifacts import ArtifactStore
 from videotool.pipeline.runner import EpisodeInput, PipelineRunner
+from videotool.providers.audio import AUDIO_PROVIDERS
+from videotool.providers.timing import TIMING_PROVIDERS, build_timing_provider
 
 FIXTURES = {}
 
@@ -35,8 +37,10 @@ def main(argv: list[str] | None = None) -> int:
     render_parser.add_argument("--out", default="out.mp4", help="output mp4 path")
     render_parser.add_argument("--renderer", default="ffmpeg", choices=["ffmpeg"],
                                help="rendering backend (default: ffmpeg)")
-    render_parser.add_argument("--audio-provider", default="silence", choices=["silence"],
+    render_parser.add_argument("--audio-provider", default="silence", choices=sorted(AUDIO_PROVIDERS),
                                help="narration audio provider (default: silence)")
+    render_parser.add_argument("--voice", default="vi-VN-HoaiMyNeural",
+                               help="TTS voice name (default: vi-VN-HoaiMyNeural)")
     render_parser.add_argument("--no-audio", action="store_true",
                                help="skip audio synthesis and render silent video")
     render_parser.add_argument("--click-track", action="store_true",
@@ -50,6 +54,11 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--media-provider", default="fixture",
                             choices=["fixture", "wikimedia"],
                             help="media provider (default: deterministic fixture)")
+    run_parser.add_argument("--timing-provider", default="deterministic",
+                            choices=sorted(TIMING_PROVIDERS),
+                            help="narration timing provider (default: deterministic)")
+    run_parser.add_argument("--voice", default="vi-VN-HoaiMyNeural",
+                            help="TTS voice name (default: vi-VN-HoaiMyNeural)")
     run_parser.add_argument("--force", action="store_true",
                             help="recompute every stage, ignoring cached artifacts")
 
@@ -64,7 +73,10 @@ def main(argv: list[str] | None = None) -> int:
         episode_id = data["episode_id"]
         store = ArtifactStore(args.artifacts)
         try:
+            from videotool.domain.timing import NarrationTiming
+            from videotool.editorial.pacing import audit_speech_pacing
             from videotool.render import render_episode
+
             audio_provider_name = None if args.no_audio else args.audio_provider
             result = render_episode(
                 episode_id=episode_id,
@@ -73,13 +85,24 @@ def main(argv: list[str] | None = None) -> int:
                 renderer_name=args.renderer,
                 audio_provider_name=audio_provider_name,
                 click_track=args.click_track,
+                voice=args.voice,
             )
             print(f"rendered {args.fixture} -> {result.output_path} ({result.duration_sec:.2f}s)")
             if result.audio_is_placeholder is True:
                 click_info = " [click_track]" if args.click_track else ""
                 print(f"  audio: {audio_provider_name} (placeholder){click_info}")
             elif result.audio_is_placeholder is False:
-                print(f"  audio: {audio_provider_name}")
+                print(f"  audio: {audio_provider_name} (production, 48000Hz, voice={args.voice})")
+                # Perform speech pacing audit
+                timing_data = store.load(episode_id, "narration_timing")
+                timeline_data = store.load(episode_id, "timeline")
+                if timing_data and timeline_data:
+                    lang = "vi" if args.voice.startswith("vi") else "en"
+                    pacing = audit_speech_pacing(timeline_data, NarrationTiming.from_dict(timing_data), language=lang)
+                    rate_unit = "SPS" if lang == "vi" else "WPS"
+                    print(f"  pacing: {pacing.avg_token_rate:.1f} {rate_unit} (score: {pacing.overall_pacing_score:.2f}), {pacing.avg_char_rate:.1f} CPS | cut alignment: {pacing.cut_alignment_score * 100:.0f}%")
+                    for w in pacing.warnings:
+                        print(f"  pacing warn: {w}")
             else:
                 print("  audio: none (silent)")
             for w in result.warnings:
@@ -93,8 +116,15 @@ def main(argv: list[str] | None = None) -> int:
     data = FIXTURES[args.fixture]()
     from videotool.editorial.media import MediaAcquisitionConfig
     media_config = MediaAcquisitionConfig(provider=args.media_provider)
+
+    timing_provider = None
+    if args.timing_provider == "azure":
+        timing_provider = build_timing_provider("azure", voice=args.voice,
+                                                cache_dir=Path(args.artifacts) / "tts_cache")
+
     runner = PipelineRunner(ArtifactStore(args.artifacts), mode=args.mode,
-                            force=args.force, media_config=media_config)
+                            force=args.force, media_config=media_config,
+                            timing_provider=timing_provider)
     result = runner.run(EpisodeInput(**data))
 
     for stage, info in result.manifest["stages"].items():

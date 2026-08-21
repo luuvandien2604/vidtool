@@ -1,4 +1,4 @@
-"""Narration audio provider abstraction and deterministic placeholder provider.
+"""Narration audio provider abstraction and provider registry.
 
 Audio synthesis is a render-time concern: this module establishes the provider
 seam, exact duration matching against NarrationTiming, and load-bearing
@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from videotool.domain.narration import Narration, NarrationAudio
 from videotool.domain.timing import NarrationTiming
+from videotool.providers.azure_speech import AzureSpeechAudioProvider
 
 if TYPE_CHECKING:
     pass
@@ -108,8 +109,9 @@ def register_audio_provider(name: str, cls: type) -> None:
     AUDIO_PROVIDERS[name] = cls
 
 
-# Register standard silence provider
+# Register standard providers
 register_audio_provider("silence", SyntheticSilenceAudioProvider)
+register_audio_provider("azure", AzureSpeechAudioProvider)
 
 
 def build_audio_provider(name: str, **kwargs) -> NarrationAudioProvider:
@@ -119,3 +121,13 @@ def build_audio_provider(name: str, **kwargs) -> NarrationAudioProvider:
             f"unknown audio provider '{name}' (have: {sorted(AUDIO_PROVIDERS)})"
         )
     return AUDIO_PROVIDERS[name](**kwargs)
+
+
+__all__ = [
+    "NarrationAudioProvider",
+    "SyntheticSilenceAudioProvider",
+    "AzureSpeechAudioProvider",
+    "AUDIO_PROVIDERS",
+    "register_audio_provider",
+    "build_audio_provider",
+]
