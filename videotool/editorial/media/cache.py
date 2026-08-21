@@ -93,11 +93,15 @@ class MediaCache:
             json.dumps(blob_meta, indent=2, sort_keys=True), encoding="utf-8")
         return sha, newly
 
-    def get(self, sha: str) -> bytes | None:
+    def get_path(self, sha: str) -> Path | None:
         for path in self._dir(sha).glob(f"{sha}.*"):
             if path.suffix != ".json":
-                return path.read_bytes()
+                return path
         return None
+
+    def get(self, sha: str) -> bytes | None:
+        path = self.get_path(sha)
+        return path.read_bytes() if path is not None else None
 
     def has_blob(self, sha: str) -> bool:
         return any(path.suffix != ".json"

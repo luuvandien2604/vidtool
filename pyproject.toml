@@ -12,5 +12,6 @@ dev = ["pytest>=8"]
 testpaths = ["tests"]
 markers = [
     "live_media: opt-in tests that hit real provider networks (never in the default suite)",
+    "render: opt-in tests that execute ffmpeg to render video (never in the default suite)",
 ]
-addopts = "-m 'not live_media'"
+addopts = "-m 'not live_media and not render'"

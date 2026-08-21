@@ -1,30 +1,42 @@
-# videotool — AI Editorial Director (Phase 1 + 1.1 + 1.2)
+# videotool — AI Editorial Director (Phases 1, 2A, 2C, 2D)
 
-Automated documentary video production system. Phase 1 delivers the
-**planning architecture**: narration in, fully validated editorial plan out.
-Phase 1.1 hardens resume (fingerprinted invalidation), stage-level
-validation/repair/fallback and asset feasibility. Phase 1.2 adds artifact
-integrity (output hashes — valid-JSON corruption cannot silently resume),
-composition completeness, the plan-of-record Media Completeness Gate, and
-motion/timeline validators. No rendering yet.
+Automated documentary video production system. The pipeline transforms
+narration + word timing into validated semantic artifacts (beats, art direction,
+visual strategy, media acquisition, generative composition, semantic geometry,
+motion keyframes, and timeline), and renders broadcast-quality 1080p@30fps video
+via FFmpeg with positioned typography, vector connectors, and burned-in narration subtitles.
 
 > Style should be predictable. Composition should not.
 
 ## Quick start
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install pytest   # dev-only dep
-make test                                              # 267 tests
-make run                                               # fixture -> artifacts/
-make dist        # source-only zip (no .venv / caches / artifacts)
+# Set up virtual environment and run pure-Python test suite (401 tests)
+python3 -m venv .venv && .venv/bin/pip install pytest
+make test
+
+# Generate planning artifacts for the Berlin Wall fixture
+python -m videotool.cli berlin_wall --artifacts artifacts
+
+# Render the episode to MP4 (requires FFmpeg with libass + librsvg)
+make test-render    # Run FFmpeg integration & end-to-end render tests
+make render         # Render artifacts/berlin_wall.mp4
 ```
 
-The CLI writes the intermediate artifacts under `artifacts/berlin_wall_phase1/`
-and prints per-stage statuses (`computed` / `resumed` / `invalidated` with
-input fingerprints), plus any repairs and feasibility adjustments. Re-running
-resumes from valid artifacts; changed inputs (narration, subject, catalog,
-mode, planner config) invalidate exactly the dependent stages. `--mode draft`
-allows placeholder assets; `--force` recomputes everything.
+CLI render syntax:
+```bash
+python -m videotool.cli render berlin_wall --artifacts artifacts --out artifacts/berlin_wall.mp4
+```
+
+### System Prerequisites for Rendering
+
+To render video clips, the following system tools must be installed:
+- **FFmpeg 6+** with `libass` (subtitle rasterization) and `librsvg` (vector graphics decoding).
+
+Verify system capabilities with:
+```bash
+ffmpeg -codecs | grep -i svg
+```
 
 ## Pipeline
 
@@ -33,12 +45,14 @@ Narration + word timing
 → SemanticBeat segmentation (20 semantic functions, 3-8s beats)
 → EpisodeArtDirection (per-topic identity; Chernobyl ≠ Berlin ≠ Titanic)
 → Visual strategy planning (23 strategies, weighted scoring, anti-repetition)
-→ Semantic asset requirements → media acquisition (relevance-scored)
+→ Semantic asset requirements → media acquisition (relevance-scored, cached)
 → Strategy feasibility pass (plan-of-record vs actually available assets)
 → Generative composition (6 families, structural signatures)
-→ Motion planning (every event has a semantic reason; camera stays stable)
-→ Timeline (renderer-agnostic; subtitles independent in a safe zone)
-→ Per-stage validation + deterministic fallbacks → final editorial QC
+→ Semantic geometry solver (coordinate mapping, safe zones, collision avoidance)
+→ Motion planning (semantic keyframes, Ken Burns focus trajectories)
+→ Timeline (renderer-agnostic; subtitles in bottom safe zone)
+→ Frame planning engine (compiles visual elements, typography, and vector overlays)
+→ FFmpeg renderer (per-beat isolated encode + lossless concat + subtitle burn-in)
 ```
 
 Domain invariants enforced by tests:
@@ -48,12 +62,12 @@ Domain invariants enforced by tests:
 * one visual family runs at most 2 consecutive beats
 * every strategy selection persists a human-readable reason
 * every beat's timing comes from narration timing
-* placeholder assets are impossible in final mode
 * valid-JSON corruption of artifacts cannot silently resume (output hash +
   per-stage semantic validator)
 * every beat has exactly one composition; final mode fails with unresolved
   REQUIRED media for the plan-of-record (Media Completeness Gate)
-* Berlin vocabulary exists only in `videotool/fixtures/berlin_wall.py`
+* connectors and route vectors render crisp SVG lines with directed arrowheads
+* all beat clips share identical encoding parameters (H.264 High 4.1 yuv420p) for lossless concatenation
 
 ## Layout
 
@@ -63,14 +77,14 @@ videotool/ai/          BeatAnalyzer / ArtDirectionGenerator interfaces + heurist
 videotool/editorial/   strategy planner, feasibility pass, composition families,
                        motion, timeline, media acquisition (query planning,
                        ranking, licensing, cache, validation), validation
+videotool/render/      frame planning, ASS subtitle generation, SVG connector
+                       vector generator, FFmpeg backend renderer
 videotool/providers/   media providers: fixture (offline) + Wikimedia Commons
 videotool/pipeline/    stage runner with fingerprinted resume
 videotool/fixtures/    acceptance fixture (The Fall of the Berlin Wall)
-tests/                 unit + acceptance suite (267 tests, no network)
-docs/                  AUDIT.md, PHASE1_REPORT.md, PHASE11_HARDENING.md, example_trace.md
-docs/references/       golden reference video (motion language only)
+tests/                 unit & integration suites (401 pure-Python tests, 3 render tests)
+docs/                  AUDIT.md, PHASE1_REPORT.md, PHASE2A_REPORT.md, PHASE2C1_GEOMETRY.md, PHASE2D_RENDERER.md
 ```
 
-Runtime has zero third-party dependencies. Phase 1 has no renderer; see
-`docs/PHASE1_REPORT.md` for scope/limitations and
-`docs/PHASE11_HARDENING.md` for the hardening pass.
+Runtime has zero third-party Python dependencies; development dependencies are `pytest`.
+See `docs/PHASE2D_RENDERER.md` for full architecture and technical report on the rendering engine.

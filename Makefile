@@ -1,4 +1,4 @@
-.PHONY: test run clean dist
+.PHONY: test test-render run render clean dist
 
 VENV := .venv
 PY := $(VENV)/bin/python
@@ -6,8 +6,14 @@ PY := $(VENV)/bin/python
 test:
 	$(PY) -m pytest tests/ -q
 
+test-render:
+	$(PY) -m pytest tests/ -m render -v
+
 run:
 	$(PY) -m videotool.cli berlin_wall --artifacts artifacts
+
+render:
+	$(PY) -m videotool.cli render berlin_wall --artifacts artifacts --out artifacts/berlin_wall.mp4
 
 # remove caches and throwaway environments before sharing the source
 clean:
