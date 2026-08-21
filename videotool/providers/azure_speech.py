@@ -19,13 +19,29 @@ from videotool.pipeline.fingerprints import stable_hash
 
 
 def _get_azure_credentials() -> tuple[str, str]:
-    """Retrieve Azure Speech credentials from environment variables."""
+    """Retrieve Azure Speech credentials from environment variables or local .env file."""
+    # Check .env file fallback if not present in environment
+    if not os.environ.get("AZURE_SPEECH_KEY") or not os.environ.get("AZURE_SPEECH_REGION"):
+        for env_path in (Path(".env"), Path(__file__).resolve().parents[2] / ".env"):
+            if env_path.is_file():
+                try:
+                    for line in env_path.read_text(encoding="utf-8").splitlines():
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            k, _, v = line.partition("=")
+                            k = k.strip()
+                            v = v.strip().strip("'\"")
+                            if k and k not in os.environ:
+                                os.environ[k] = v
+                except Exception:
+                    pass
+
     key = os.environ.get("AZURE_SPEECH_KEY", "").strip()
     region = os.environ.get("AZURE_SPEECH_REGION", "").strip()
     if not key or not region:
         raise ValueError(
             "Azure Speech credentials missing: Please set AZURE_SPEECH_KEY "
-            "and AZURE_SPEECH_REGION environment variables."
+            "and AZURE_SPEECH_REGION environment variables (or add them to a .env file)."
         )
     return key, region
 
