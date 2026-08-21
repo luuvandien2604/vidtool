@@ -109,7 +109,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  warn: {w}")
             return 0
         except Exception as exc:
-            print(f"render ERROR: {exc}")
+            import traceback
+            print(f"render ERROR: {exc or repr(exc)}")
+            traceback.print_exc()
             return 1
 
     # Planning pipeline run

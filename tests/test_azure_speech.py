@@ -15,6 +15,8 @@ def test_azure_speech_missing_credentials_raises(monkeypatch):
     """Verify that missing environment variables raise a clear ValueError specifying the exact variable names."""
     monkeypatch.delenv("AZURE_SPEECH_KEY", raising=False)
     monkeypatch.delenv("AZURE_SPEECH_REGION", raising=False)
+    # Prevent local .env on disk from supplying credentials during this unit test
+    monkeypatch.setattr("videotool.providers.azure_speech.Path.is_file", lambda self: False)
 
     with pytest.raises(ValueError, match="AZURE_SPEECH_KEY and AZURE_SPEECH_REGION"):
         _get_azure_credentials()
@@ -38,10 +40,10 @@ def test_azure_speech_live_synthesis(tmp_path, monkeypatch):
 
     Excluded from default suite; runs only when AZURE_SPEECH_KEY is set and --live-tts is requested.
     """
-    key = os.environ.get("AZURE_SPEECH_KEY")
-    region = os.environ.get("AZURE_SPEECH_REGION")
-    if not key or not region:
-        pytest.skip("AZURE_SPEECH_KEY or AZURE_SPEECH_REGION not set in environment")
+    try:
+        key, region = _get_azure_credentials()
+    except Exception:
+        pytest.skip("AZURE_SPEECH_KEY or AZURE_SPEECH_REGION not set in environment or .env")
 
     narration = Narration(
         text="Tháng mười một năm 1989, bức tường sụp đổ.",

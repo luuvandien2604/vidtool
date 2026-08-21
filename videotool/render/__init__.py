@@ -65,10 +65,9 @@ def render_episode(episode_id: str, store: ArtifactStore, output_path: str | Pat
 
     # Audio synthesis handling
     if audio is None and audio_provider_name and audio_provider_name.lower() != "none":
-        narration_data = store.load(episode_id, "narration")
         timing_data = store.load(episode_id, "narration_timing")
+        narration_data = store.load(episode_id, "narration")
 
-        narration = Narration.from_dict(narration_data) if narration_data else Narration(text="")
         if timing_data:
             timing = NarrationTiming.from_dict(timing_data)
         else:
@@ -79,6 +78,13 @@ def render_episode(episode_id: str, store: ArtifactStore, output_path: str | Pat
                 provider="timeline",
                 provider_version=1,
             )
+
+        if narration_data and narration_data.get("text"):
+            narration = Narration.from_dict(narration_data)
+        elif timing.words:
+            narration = Narration(text=" ".join(w.text for w in timing.words), words=timing.words)
+        else:
+            narration = Narration(text="")
 
         kwargs = {}
         if audio_provider_name == "silence":

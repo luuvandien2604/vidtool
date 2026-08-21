@@ -62,16 +62,18 @@ def synthesize_azure_speech(
     text = narration.text.strip()
     lang = narration.language or ("vi" if voice.startswith("vi") else "en")
 
-    cache_key = stable_hash("azure_speech_v1", voice, text, lang)
+    cache_key = stable_hash("azure_speech_v1", voice, text)
     cached_wav = cache_root / f"{cache_key}.wav"
     cached_json = cache_root / f"{cache_key}.json"
 
-    # 1. Return cached synthesis if present
-    if cached_wav.exists() and cached_json.exists():
+    # 1. Return cached synthesis if valid
+    if cached_wav.exists() and cached_wav.stat().st_size > 1000 and cached_json.exists():
         try:
             meta = json.loads(cached_json.read_text(encoding="utf-8"))
             timing = NarrationTiming.from_dict(meta["timing"])
-            return cached_wav, timing
+            with wave.open(str(cached_wav), "rb") as wf:
+                if wf.getnframes() > 0:
+                    return cached_wav, timing
         except Exception:
             pass  # Corrupt cache -> recompute
 
@@ -108,12 +110,14 @@ def synthesize_azure_speech(
 
             collected_events.append({
                 "text": evt.text,
+                "text_offset": evt.text_offset,
+                "word_length": evt.word_length,
                 "start_sec": round(offset_sec, 3),
+                "dur_sec": max(0.05, dur_sec),
                 "end_sec": round(offset_sec + max(0.05, dur_sec), 3),
             })
 
-    audio_config = speechsdk.audio.AudioOutputConfig(filename=str(cached_wav))
-    synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
+    synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
     synthesizer.synthesis_word_boundary.connect(on_word_boundary)
 
     result = synthesizer.speak_text_async(text).get()
@@ -122,24 +126,72 @@ def synthesize_azure_speech(
         err_details = getattr(result, "error_details", str(result.reason))
         raise RuntimeError(f"Azure Speech synthesis failed: {result.reason} ({err_details})")
 
+    # Atomically write complete WAV bytes
+    cached_wav.write_bytes(result.audio_data)
+
     # Read exact audio duration from WAV header
     with wave.open(str(cached_wav), "rb") as wf:
         total_frames = wf.getnframes()
         frame_rate = wf.getframerate()
         exact_duration = round(total_frames / float(frame_rate), 3)
 
-    # Build WordTiming tuple
+    # Build WordTiming tuple matching canonical text words with monotonic non-overlapping intervals
+    import re
     words: list[WordTiming] = []
-    for i, ev in enumerate(collected_events):
-        words.append(WordTiming(
-            index=i,
-            text=ev["text"],
-            start_sec=ev["start_sec"],
-            end_sec=min(exact_duration, ev["end_sec"]),
-        ))
+    prev_end = 0.0
 
-    # If word boundaries were not received, fallback to even spacing
-    if not words and text:
+    if collected_events:
+        for i, m in enumerate(re.finditer(r"\S+", text)):
+            w_text = m.group(0)
+            c_start, c_end = m.start(), m.end()
+
+            matching_ev = None
+            for ev in collected_events:
+                ev_start = ev.get("text_offset", 0)
+                ev_end = ev_start + max(1, ev.get("word_length", 1))
+                if max(c_start, ev_start) < min(c_end, ev_end):
+                    matching_ev = ev
+                    break
+
+            if matching_ev is not None:
+                ev_start = matching_ev.get("text_offset", 0)
+                ev_len = max(1, matching_ev.get("word_length", 1))
+                frac_start = max(0.0, min(1.0, (c_start - ev_start) / ev_len))
+                frac_end = max(0.0, min(1.0, (c_end - ev_start) / ev_len))
+                dur = matching_ev.get("dur_sec", matching_ev["end_sec"] - matching_ev["start_sec"])
+                raw_start = matching_ev["start_sec"] + frac_start * dur
+                raw_end = matching_ev["start_sec"] + max(frac_end, frac_start + 0.02) * dur
+            else:
+                prev_evs = [ev for ev in collected_events if ev.get("text_offset", 0) <= c_start]
+                if prev_evs:
+                    last = prev_evs[-1]
+                    raw_start = last["end_sec"]
+                    raw_end = raw_start + 0.1
+                else:
+                    raw_start = 0.0
+                    raw_end = 0.1
+
+            start_sec = max(prev_end, round(raw_start, 3))
+            end_sec = max(start_sec + 0.02, round(raw_end, 3))
+            words.append(WordTiming(
+                index=i,
+                text=w_text,
+                start_sec=start_sec,
+                end_sec=end_sec,
+            ))
+            prev_end = end_sec
+
+        if words:
+            # Anchor final word to exact_duration
+            last_w = words[-1]
+            final_start = min(last_w.start_sec, exact_duration - 0.02)
+            words[-1] = WordTiming(
+                index=last_w.index,
+                text=last_w.text,
+                start_sec=round(max(0.0, final_start), 3),
+                end_sec=exact_duration,
+            )
+    elif text:
         from videotool.domain.narration import synthetic_word_timings
         words = list(synthetic_word_timings(text, exact_duration))
 

@@ -235,6 +235,7 @@ class PipelineRunner:
         timed_narration = Narration(text=ep.narration.text,
                                     words=res.narration_timing.words,
                                     language=ep.narration.language)
+        self.store.save(ep.episode_id, "narration", ep.narration.to_dict())
         semantic_narration_payload = {
             "text": ep.narration.text, "language": ep.narration.language,
             "words": [word.text for word in res.narration_timing.words]}
