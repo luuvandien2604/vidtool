@@ -7,6 +7,46 @@ fixtures provide deterministic synthetic timings.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
+
+
+@dataclass(frozen=True)
+class NarrationAudio:
+    """Synthesized or placeholder audio file for episode narration.
+
+    The ``is_placeholder`` flag is load-bearing: downstream stages and renderers
+    must not treat placeholder audio as final production speech.
+    """
+    audio_path: Path
+    duration_sec: float
+    sample_rate: int
+    channels: int
+    provider: str
+    provider_version: int
+    is_placeholder: bool = False
+
+    def to_dict(self) -> dict:
+        return {
+            "audio_path": str(self.audio_path),
+            "duration_sec": self.duration_sec,
+            "sample_rate": self.sample_rate,
+            "channels": self.channels,
+            "provider": self.provider,
+            "provider_version": self.provider_version,
+            "is_placeholder": self.is_placeholder,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "NarrationAudio":
+        return cls(
+            audio_path=Path(d["audio_path"]),
+            duration_sec=float(d["duration_sec"]),
+            sample_rate=int(d.get("sample_rate", 48000)),
+            channels=int(d.get("channels", 1)),
+            provider=d.get("provider", "unknown"),
+            provider_version=int(d.get("provider_version", 1)),
+            is_placeholder=bool(d.get("is_placeholder", False)),
+        )
 
 
 @dataclass(frozen=True)

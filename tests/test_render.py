@@ -40,14 +40,14 @@ def test_renderer_registry():
 
 @pytest.mark.render
 def test_render_berlin_wall_end_to_end(tmp_path):
-    """End-to-end render smoke test on the berlin_wall fixture.
+    """End-to-end render smoke test on the berlin_wall fixture with default placeholder audio.
 
     Asserts:
     1. Output MP4 file is generated.
     2. Video stream is 1920x1080 @ 30fps with h264/yuv420p.
-    3. Duration matches timeline within 0.15s tolerance.
-    4. Pinned encode parameters: exactly one consistent video stream without format warnings.
-    5. File size is non-trivial (> 50 KB).
+    3. Audio stream is AAC @ 48000Hz mono.
+    4. Duration matches timeline within 0.15s tolerance.
+    5. RenderResult reflects placeholder audio provenance.
     """
     data = load_episode()
     store = ArtifactStore(tmp_path / "artifacts")
@@ -61,10 +61,12 @@ def test_render_berlin_wall_end_to_end(tmp_path):
         store=store,
         output_path=out_mp4,
         renderer_name="ffmpeg",
+        audio_provider_name="silence",
     )
 
     assert out_mp4.exists()
     assert out_mp4.stat().st_size > 50_000  # > 50 KB
+    assert render_result.audio_is_placeholder is True
 
     # Run ffprobe structural analysis
     meta = probe_media_file(out_mp4)
@@ -82,9 +84,17 @@ def test_render_berlin_wall_end_to_end(tmp_path):
     assert v_stream.get("pix_fmt") == "yuv420p"
 
     # Pinned encode parameter check (Condition 2)
-    # Profile should be High and level 41 (or 4.1)
     profile = v_stream.get("profile", "")
     assert "High" in profile, f"Expected High profile, got {profile}"
+
+    # Assert exactly 1 audio stream with pinned AAC parameters
+    audio_streams = [s for s in streams if s.get("codec_type") == "audio"]
+    assert len(audio_streams) == 1, f"Expected exactly 1 audio stream, got {len(audio_streams)}"
+
+    a_stream = audio_streams[0]
+    assert a_stream.get("codec_name") == "aac"
+    assert a_stream.get("sample_rate") == "48000"
+    assert a_stream.get("channels") == 1
 
     # Verify duration matches expected timeline duration
     expected_duration = pipeline_result.timeline["total_duration_sec"]
@@ -92,3 +102,42 @@ def test_render_berlin_wall_end_to_end(tmp_path):
     assert abs(actual_duration - expected_duration) < 0.20, (
         f"Duration mismatch: actual {actual_duration:.2f}s vs expected {expected_duration:.2f}s"
     )
+
+
+@pytest.mark.render
+def test_render_berlin_wall_no_audio(tmp_path):
+    """End-to-end render test with audio disabled (--no-audio mode).
+
+    Asserts:
+    1. Output MP4 file is generated.
+    2. Video stream is 1920x1080 @ 30fps with h264/yuv420p.
+    3. Exactly 0 audio streams are present in the output.
+    4. RenderResult reflects no audio (audio_is_placeholder is None).
+    """
+    data = load_episode()
+    store = ArtifactStore(tmp_path / "artifacts")
+    runner = PipelineRunner(store, mode="draft")
+    pipeline_result = runner.run(EpisodeInput(**data))
+    assert pipeline_result.ok, f"Pipeline run failed: {pipeline_result.validation}"
+
+    out_mp4 = tmp_path / "output_berlin_silent.mp4"
+    render_result = render_episode(
+        episode_id=pipeline_result.episode_id,
+        store=store,
+        output_path=out_mp4,
+        renderer_name="ffmpeg",
+        audio_provider_name=None,
+    )
+
+    assert out_mp4.exists()
+    assert render_result.audio_is_placeholder is None
+
+    # Run ffprobe structural analysis
+    meta = probe_media_file(out_mp4)
+    streams = meta.get("streams", [])
+
+    video_streams = [s for s in streams if s.get("codec_type") == "video"]
+    assert len(video_streams) == 1
+
+    audio_streams = [s for s in streams if s.get("codec_type") == "audio"]
+    assert len(audio_streams) == 0, f"Expected 0 audio streams with --no-audio, got {len(audio_streams)}"

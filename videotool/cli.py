@@ -2,7 +2,7 @@
 
 Usage:
     python -m videotool.cli berlin_wall [--mode draft|final] [--artifacts DIR] [--force]
-    python -m videotool.cli render berlin_wall [--artifacts DIR] [--out out.mp4] [--renderer ffmpeg]
+    python -m videotool.cli render berlin_wall [--artifacts DIR] [--out out.mp4] [--renderer ffmpeg] [--audio-provider silence] [--no-audio]
 """
 from __future__ import annotations
 
@@ -35,6 +35,12 @@ def main(argv: list[str] | None = None) -> int:
     render_parser.add_argument("--out", default="out.mp4", help="output mp4 path")
     render_parser.add_argument("--renderer", default="ffmpeg", choices=["ffmpeg"],
                                help="rendering backend (default: ffmpeg)")
+    render_parser.add_argument("--audio-provider", default="silence", choices=["silence"],
+                               help="narration audio provider (default: silence)")
+    render_parser.add_argument("--no-audio", action="store_true",
+                               help="skip audio synthesis and render silent video")
+    render_parser.add_argument("--click-track", action="store_true",
+                               help="emit audible tone pulses at beat boundaries (silence provider only)")
 
     # Subcommand: run (also default if fixture name passed directly)
     run_parser = subparsers.add_parser("run", help="run planning pipeline")
@@ -59,13 +65,23 @@ def main(argv: list[str] | None = None) -> int:
         store = ArtifactStore(args.artifacts)
         try:
             from videotool.render import render_episode
+            audio_provider_name = None if args.no_audio else args.audio_provider
             result = render_episode(
                 episode_id=episode_id,
                 store=store,
                 output_path=args.out,
                 renderer_name=args.renderer,
+                audio_provider_name=audio_provider_name,
+                click_track=args.click_track,
             )
             print(f"rendered {args.fixture} -> {result.output_path} ({result.duration_sec:.2f}s)")
+            if result.audio_is_placeholder is True:
+                click_info = " [click_track]" if args.click_track else ""
+                print(f"  audio: {audio_provider_name} (placeholder){click_info}")
+            elif result.audio_is_placeholder is False:
+                print(f"  audio: {audio_provider_name}")
+            else:
+                print("  audio: none (silent)")
             for w in result.warnings:
                 print(f"  warn: {w}")
             return 0

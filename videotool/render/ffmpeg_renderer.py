@@ -14,6 +14,7 @@ import xml.sax.saxutils as saxutils
 from pathlib import Path
 from typing import Any
 
+from videotool.domain.narration import NarrationAudio
 from videotool.editorial.media.cache import MediaCache
 from videotool.render.frame_plan import BeatFramePlan, EpisodeFramePlan, MediaRenderElement
 from videotool.render.interfaces import Renderer, RenderResult
@@ -228,14 +229,27 @@ class FFmpegRenderer(Renderer):
         return out_clip
 
     def render(self, plan: EpisodeFramePlan, output_path: str | Path,
-               cache_dir: str | Path | None = None) -> RenderResult:
-        """Render the complete episode from frame plan."""
+               cache_dir: str | Path | None = None,
+               audio: NarrationAudio | None = None) -> RenderResult:
+        """Render the complete episode from frame plan with optional narration audio."""
         ok, msg = check_ffmpeg_available()
         if not ok:
             raise RuntimeError(f"FFmpeg build prerequisite check failed: {msg}")
 
         out_dest = Path(output_path).resolve()
         out_dest.parent.mkdir(parents=True, exist_ok=True)
+
+        if audio is not None:
+            if not audio.audio_path.exists():
+                raise FileNotFoundError(f"Narration audio file not found: {audio.audio_path}")
+            # Pre-mux duration assertion: fail loudly if audio duration and video plan disagree
+            dur_delta = abs(float(audio.duration_sec) - float(plan.total_duration_sec))
+            if dur_delta > 0.05:
+                raise ValueError(
+                    f"Audio and video duration mismatch: audio duration is {audio.duration_sec:.3f}s "
+                    f"but video frame plan duration is {plan.total_duration_sec:.3f}s "
+                    f"(delta: {dur_delta:.3f}s exceeds 0.05s tolerance)"
+                )
 
         cache = MediaCache(cache_dir) if cache_dir else None
         warnings: list[str] = []
@@ -270,7 +284,7 @@ class FFmpegRenderer(Renderer):
                     f"FFmpeg concat demuxer failed:\n{concat_res.stderr}"
                 )
 
-            # Step 3: Burn in Episode ASS Subtitles onto final MP4
+            # Step 3: Burn in Episode ASS Subtitles and mux Audio onto final MP4
             subtitles_file = work_dir / "episode_subtitles.ass"
             subtitles_file.write_text(plan.subtitles_ass, encoding="utf-8")
             subtitles_escaped = str(subtitles_file).replace("\\", "/").replace(":", "\\:")
@@ -279,6 +293,11 @@ class FFmpegRenderer(Renderer):
                 self.ffmpeg_bin,
                 "-y",
                 "-i", str(raw_concat_mp4),
+            ]
+            if audio is not None:
+                burn_cmd.extend(["-i", str(audio.audio_path.resolve())])
+
+            burn_cmd.extend([
                 "-vf", f"ass='{subtitles_escaped}'",
                 "-c:v", "libx264",
                 "-preset", "veryfast",
@@ -286,12 +305,24 @@ class FFmpegRenderer(Renderer):
                 "-level:v", "4.1",
                 "-pix_fmt", "yuv420p",
                 "-r", "30",
-                str(out_dest),
-            ]
+            ])
+
+            if audio is not None:
+                burn_cmd.extend([
+                    "-c:a", "aac",
+                    "-b:a", "128k",
+                    "-ar", "48000",
+                    "-ac", "1",
+                ])
+            else:
+                burn_cmd.extend(["-an"])
+
+            burn_cmd.append(str(out_dest))
+
             burn_res = subprocess.run(burn_cmd, capture_output=True, text=True)
             if burn_res.returncode != 0:
                 raise RuntimeError(
-                    f"FFmpeg subtitle burn-in failed:\n{burn_res.stderr}"
+                    f"FFmpeg subtitle burn-in / audio mux failed:\n{burn_res.stderr}"
                 )
 
         # Step 4: Validate output with ffprobe
@@ -299,15 +330,24 @@ class FFmpegRenderer(Renderer):
         format_info = meta.get("format", {})
         actual_duration = float(format_info.get("duration", 0.0))
 
+        audio_streams = [s for s in meta.get("streams", []) if s.get("codec_type") == "audio"]
+        if audio is not None and not audio_streams:
+            raise RuntimeError("Render verification failed: expected audio stream in output MP4, but none found")
+        elif audio is None and audio_streams:
+            raise RuntimeError("Render verification failed: expected no audio stream in output MP4, but audio stream was found")
+
         return RenderResult(
             output_path=out_dest,
             duration_sec=actual_duration,
             warnings=warnings,
             metadata={
                 "streams": len(meta.get("streams", [])),
+                "audio_streams": len(audio_streams),
                 "format_name": format_info.get("format_name", ""),
                 "size_bytes": int(format_info.get("size", 0)),
                 "actual_duration_sec": actual_duration,
                 "expected_duration_sec": plan.total_duration_sec,
             },
+            audio_is_placeholder=audio.is_placeholder if audio else None,
+            audio_path=audio.audio_path if audio else None,
         )

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from videotool.domain.narration import NarrationAudio
     from videotool.render.frame_plan import EpisodeFramePlan
 
 
@@ -19,6 +20,8 @@ class RenderResult:
     duration_sec: float
     warnings: list[str] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
+    audio_is_placeholder: bool | None = None
+    audio_path: Path | None = None
 
 
 class Renderer(Protocol):
@@ -26,6 +29,7 @@ class Renderer(Protocol):
     renderer_name: str
 
     def render(self, plan: EpisodeFramePlan, output_path: str | Path,
-               cache_dir: str | Path | None = None) -> RenderResult:
+               cache_dir: str | Path | None = None,
+               audio: NarrationAudio | None = None) -> RenderResult:
         """Render an EpisodeFramePlan to a media file."""
         ...

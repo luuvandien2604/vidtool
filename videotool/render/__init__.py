@@ -1,14 +1,23 @@
-"""Documentary video rendering subsystem (Phase 2D Spike).
+"""Documentary video rendering subsystem (Phase 2D/2E).
 
 Provides renderer-independent frame planning, ASS subtitle generation,
-and concrete FFmpeg video rendering backends.
+audio synthesis plumbing, and concrete FFmpeg video rendering backends.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
 from videotool.artifacts import ArtifactStore
-from videotool.render.ffmpeg_renderer import FFmpegRenderer, check_ffmpeg_available, probe_media_file
+from videotool.domain.narration import Narration, NarrationAudio
+from videotool.domain.timing import NarrationTiming
+from videotool.providers.audio import (AUDIO_PROVIDERS,
+                                       NarrationAudioProvider,
+                                       SyntheticSilenceAudioProvider,
+                                       build_audio_provider,
+                                       register_audio_provider)
+from videotool.render.ffmpeg_renderer import (FFmpegRenderer,
+                                             check_ffmpeg_available,
+                                             probe_media_file)
 from videotool.render.frame_plan import (BeatFramePlan, ConnectorRenderElement,
                                          EpisodeFramePlan, Keyframe,
                                          MediaRenderElement, PixelRect,
@@ -21,7 +30,10 @@ from videotool.render.svg_overlay import generate_svg_overlay
 
 
 def render_episode(episode_id: str, store: ArtifactStore, output_path: str | Path,
-                   renderer_name: str = "ffmpeg") -> RenderResult:
+                   renderer_name: str = "ffmpeg",
+                   audio_provider_name: str | None = "silence",
+                   click_track: bool = False,
+                   audio: NarrationAudio | None = None) -> RenderResult:
     """Convenience entry point: loads episode artifacts, builds frame plan, and renders video."""
     # Check that required artifacts exist
     timeline = store.load(episode_id, "timeline")
@@ -49,11 +61,32 @@ def render_episode(episode_id: str, store: ArtifactStore, output_path: str | Pat
         semantic_beats=semantic_beats,
     )
 
+    # Audio synthesis handling
+    if audio is None and audio_provider_name and audio_provider_name.lower() != "none":
+        narration_data = store.load(episode_id, "narration")
+        timing_data = store.load(episode_id, "narration_timing")
+
+        narration = Narration.from_dict(narration_data) if narration_data else Narration(text="")
+        if timing_data:
+            timing = NarrationTiming.from_dict(timing_data)
+        else:
+            timing = NarrationTiming(
+                words=(),
+                duration_sec=plan.total_duration_sec,
+                source="timeline_plan_fallback",
+                provider="timeline",
+                provider_version=1,
+            )
+
+        provider = build_audio_provider(audio_provider_name, click_track=click_track)
+        audio_dest = store.episode_dir(episode_id) / "narration_audio.wav"
+        audio = provider.synthesize(narration, timing, out_path=audio_dest, timeline=timeline)
+
     # Resolve renderer and cache dir
     renderer = get_renderer(renderer_name)
     cache_dir = store.root / "media_cache"
 
-    return renderer.render(plan, output_path, cache_dir=cache_dir)
+    return renderer.render(plan, output_path, cache_dir=cache_dir, audio=audio)
 
 
 __all__ = [
@@ -75,4 +108,10 @@ __all__ = [
     "render_episode",
     "check_ffmpeg_available",
     "probe_media_file",
+    "NarrationAudio",
+    "NarrationAudioProvider",
+    "SyntheticSilenceAudioProvider",
+    "AUDIO_PROVIDERS",
+    "register_audio_provider",
+    "build_audio_provider",
 ]

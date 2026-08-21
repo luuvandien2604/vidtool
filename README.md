@@ -1,17 +1,18 @@
-# videotool — AI Editorial Director (Phases 1, 2A, 2C, 2D)
+# videotool — AI Editorial Director (Phases 1, 2A, 2C, 2D, 2E)
 
 Automated documentary video production system. The pipeline transforms
 narration + word timing into validated semantic artifacts (beats, art direction,
 visual strategy, media acquisition, generative composition, semantic geometry,
 motion keyframes, and timeline), and renders broadcast-quality 1080p@30fps video
-via FFmpeg with positioned typography, vector connectors, and burned-in narration subtitles.
+via FFmpeg with positioned typography, vector connectors, burned-in narration subtitles,
+and synchronized audio track plumbing.
 
 > Style should be predictable. Composition should not.
 
 ## Quick start
 
 ```bash
-# Set up virtual environment and run pure-Python test suite (401 tests)
+# Set up virtual environment and run pure-Python test suite (406 tests)
 python3 -m venv .venv && .venv/bin/pip install pytest
 make test
 
@@ -19,13 +20,20 @@ make test
 python -m videotool.cli berlin_wall --artifacts artifacts
 
 # Render the episode to MP4 (requires FFmpeg with libass + librsvg)
-make test-render    # Run FFmpeg integration & end-to-end render tests
+make test-render    # Run FFmpeg integration & end-to-end render tests (4 tests)
 make render         # Render artifacts/berlin_wall.mp4
 ```
 
 CLI render syntax:
 ```bash
+# Render with default placeholder audio
 python -m videotool.cli render berlin_wall --artifacts artifacts --out artifacts/berlin_wall.mp4
+
+# Render silent video (no audio stream)
+python -m videotool.cli render berlin_wall --artifacts artifacts --out artifacts/berlin_wall_silent.mp4 --no-audio
+
+# Render with audible beat-boundary clicks
+python -m videotool.cli render berlin_wall --artifacts artifacts --out artifacts/berlin_wall_clicks.mp4 --click-track
 ```
 
 ### System Prerequisites for Rendering
@@ -52,7 +60,8 @@ Narration + word timing
 → Motion planning (semantic keyframes, Ken Burns focus trajectories)
 → Timeline (renderer-agnostic; subtitles in bottom safe zone)
 → Frame planning engine (compiles visual elements, typography, and vector overlays)
-→ FFmpeg renderer (per-beat isolated encode + lossless concat + subtitle burn-in)
+→ Audio synthesis engine (deterministic placeholder / TTS provider seam)
+→ FFmpeg renderer (per-beat isolated encode + lossless concat + subtitle burn-in + audio mux)
 ```
 
 Domain invariants enforced by tests:
@@ -67,24 +76,25 @@ Domain invariants enforced by tests:
 * every beat has exactly one composition; final mode fails with unresolved
   REQUIRED media for the plan-of-record (Media Completeness Gate)
 * connectors and route vectors render crisp SVG lines with directed arrowheads
+* audio track duration matches video duration with pre-mux verification
+* placeholder audio carries explicit, load-bearing provenance (`is_placeholder=True`)
 * all beat clips share identical encoding parameters (H.264 High 4.1 yuv420p) for lossless concatenation
 
 ## Layout
 
 ```
-videotool/domain/      typed models (stdlib only)
+videotool/domain/      typed models (narration, audio, geometry, timeline, etc.)
 videotool/ai/          BeatAnalyzer / ArtDirectionGenerator interfaces + heuristics
 videotool/editorial/   strategy planner, feasibility pass, composition families,
                        motion, timeline, media acquisition (query planning,
                        ranking, licensing, cache, validation), validation
-videotool/render/      frame planning, ASS subtitle generation, SVG connector
-                       vector generator, FFmpeg backend renderer
-videotool/providers/   media providers: fixture (offline) + Wikimedia Commons
+videotool/providers/   media (fixture + Wikimedia) and audio providers (synthetic silence + click track)
+videotool/render/      frame planning, ASS subtitles, SVG vectors, FFmpeg renderer
 videotool/pipeline/    stage runner with fingerprinted resume
 videotool/fixtures/    acceptance fixture (The Fall of the Berlin Wall)
-tests/                 unit & integration suites (401 pure-Python tests, 3 render tests)
-docs/                  AUDIT.md, PHASE1_REPORT.md, PHASE2A_REPORT.md, PHASE2C1_GEOMETRY.md, PHASE2D_RENDERER.md
+tests/                 unit & integration suites (406 pure-Python tests, 4 render tests)
+docs/                  AUDIT.md, PHASE1_REPORT.md, PHASE2A_REPORT.md, PHASE2C1_GEOMETRY.md, PHASE2D_RENDERER.md, PHASE2E_AUDIO.md
 ```
 
 Runtime has zero third-party Python dependencies; development dependencies are `pytest`.
-See `docs/PHASE2D_RENDERER.md` for full architecture and technical report on the rendering engine.
+See `docs/PHASE2E_AUDIO.md` for technical report on the audio plumbing subsystem.
