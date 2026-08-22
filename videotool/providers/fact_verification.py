@@ -74,6 +74,51 @@ def _build_verifier_user_prompt(topic: str, narration_text: str, claims: list[Fa
     )
 
 
+def _extract_json_dict(raw_text: str) -> dict:
+    """Robustly extract and parse JSON object or array from LLM response text."""
+    if not raw_text:
+        return {}
+    try:
+        data = json.loads(raw_text)
+        if isinstance(data, dict):
+            return data
+        if isinstance(data, list):
+            return {"verifications": data, "claims": data}
+    except Exception:
+        pass
+
+    fence_m = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", raw_text, re.IGNORECASE)
+    if fence_m:
+        try:
+            data = json.loads(fence_m.group(1).strip())
+            if isinstance(data, dict):
+                return data
+            if isinstance(data, list):
+                return {"verifications": data, "claims": data}
+        except Exception:
+            pass
+
+    bracket_m = re.search(r"\[[\s\S]*\]", raw_text)
+    if bracket_m:
+        try:
+            data = json.loads(bracket_m.group(0))
+            if isinstance(data, list):
+                return {"verifications": data, "claims": data}
+        except Exception:
+            pass
+
+    bracket_dict = re.search(r"\{[\s\S]*\}", raw_text)
+    if bracket_dict:
+        try:
+            data = json.loads(bracket_dict.group(0))
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+
+    return {}
+
+
 class ClaudeWebSearchFactVerifier:
     """Fact verifier using Anthropic Claude with Web Search via stdlib urllib."""
     provider_id = "claude"
@@ -136,11 +181,7 @@ class ClaudeWebSearchFactVerifier:
             content_blocks = resp_data.get("content", [])
             raw_text = "".join(b.get("text", "") for b in content_blocks if b.get("type") == "text")
 
-            json_match = re.search(r"\{[\s\S]*\}", raw_text)
-            if not json_match:
-                raise ValueError(f"Claude did not return valid JSON: {raw_text[:200]}")
-
-            parsed = json.loads(json_match.group(0))
+            parsed = _extract_json_dict(raw_text)
             items = parsed.get("verifications", [])
 
             # Validation check: Ensure exact count matching
@@ -185,7 +226,7 @@ class GeminiWebSearchFactVerifier:
     def __init__(self, model: str | None = None, api_key: str | None = None, timeout_sec: float = 90.0):
         load_env_fallback()
         self.api_key = api_key or os.environ.get("GEMINI_API_KEY", "").strip()
-        self.model = model or os.environ.get("GEMINI_NARRATION_MODEL", "gemini-2.5-flash")
+        self.model = model or os.environ.get("GEMINI_NARRATION_MODEL", "gemini-2.5-flash-lite")
         self.timeout_sec = timeout_sec
 
     def verify(
@@ -221,7 +262,6 @@ class GeminiWebSearchFactVerifier:
                 ],
                 "generationConfig": {
                     "temperature": 0.1,
-                    "responseMimeType": "application/json",
                 },
             }
 
@@ -231,15 +271,32 @@ class GeminiWebSearchFactVerifier:
                 "user-agent": "vidtool/0.1.0",
             }
 
-            req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
-            try:
-                with urllib.request.urlopen(req, timeout=self.timeout_sec) as resp:
-                    resp_data = json.loads(resp.read().decode("utf-8"))
-            except urllib.error.HTTPError as err:
-                err_body = err.read().decode("utf-8", errors="replace")
-                raise RuntimeError(f"Gemini verification API failed ({err.code}): {err_body}") from err
-            except Exception as err:
-                raise RuntimeError(f"Gemini verification network failure: {err}") from err
+            resp_data = None
+            last_err = None
+            import time
+
+            for attempt in range(3):
+                req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+                try:
+                    with urllib.request.urlopen(req, timeout=self.timeout_sec) as resp:
+                        resp_data = json.loads(resp.read().decode("utf-8"))
+                        break
+                except urllib.error.HTTPError as err:
+                    err_body = err.read().decode("utf-8", errors="replace")
+                    last_err = err
+                    if err.code in (429, 500, 503) and attempt < 2:
+                        time.sleep(2.0 * (attempt + 1))
+                        continue
+                    raise RuntimeError(f"Gemini verification API failed ({err.code}): {err_body}") from err
+                except Exception as err:
+                    last_err = err
+                    if attempt < 2:
+                        time.sleep(2.0 * (attempt + 1))
+                        continue
+                    raise RuntimeError(f"Gemini verification network failure: {err}") from err
+
+            if resp_data is None:
+                raise RuntimeError(f"Gemini verification failed after 3 attempts: {last_err}")
 
             candidates = resp_data.get("candidates", [])
             if not candidates:
@@ -258,16 +315,21 @@ class GeminiWebSearchFactVerifier:
                 if web_uri and web_uri not in grounding_urls:
                     grounding_urls.append(web_uri)
 
-            json_match = re.search(r"\{[\s\S]*\}", raw_text)
-            if not json_match:
-                raise ValueError(f"Gemini did not return valid JSON: {raw_text[:200]}")
-
-            parsed = json.loads(json_match.group(0))
+            parsed = _extract_json_dict(raw_text)
             items = parsed.get("verifications", [])
-            items_by_id = {it.get("claim_id"): it for it in items if isinstance(it, dict)}
+            items_by_id = {str(it.get("claim_id")): it for it in items if isinstance(it, dict)}
 
-            for c in chunk:
+            for idx, c in enumerate(chunk):
                 it = items_by_id.get(c.claim_id)
+                if not it:
+                    clean_id = c.claim_id.replace("claim_", "").replace("c", "").lstrip("0")
+                    for k, val in items_by_id.items():
+                        if k.replace("claim_", "").replace("c", "").lstrip("0") == clean_id:
+                            it = val
+                            break
+                if not it and idx < len(items) and isinstance(items[idx], dict):
+                    it = items[idx]
+
                 if it:
                     status_str = str(it.get("status", "UNCERTAIN")).upper()
                     try:

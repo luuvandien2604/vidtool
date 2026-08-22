@@ -114,6 +114,38 @@ def _build_writer_user_prompt(topic: str, target_duration_sec: float | None, lan
     )
 
 
+def _extract_json_dict(raw_text: str) -> dict:
+    """Robustly extract and parse JSON object from LLM response text."""
+    if not raw_text:
+        return {}
+    try:
+        data = json.loads(raw_text)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+
+    fence_m = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", raw_text, re.IGNORECASE)
+    if fence_m:
+        try:
+            data = json.loads(fence_m.group(1).strip())
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+
+    bracket_m = re.search(r"\{[\s\S]*\}", raw_text)
+    if bracket_m:
+        try:
+            data = json.loads(bracket_m.group(0))
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+
+    return {}
+
+
 class ClaudeNarrationWriterProvider:
     """Writes documentary narration using Anthropic Claude Messages API via stdlib urllib."""
     provider_id = "claude"
@@ -168,17 +200,12 @@ class ClaudeNarrationWriterProvider:
         content_blocks = resp_data.get("content", [])
         raw_text = "".join(b.get("text", "") for b in content_blocks if b.get("type") == "text")
 
-        # Parse JSON from response (handling potential markdown fences)
-        json_match = re.search(r"\{[\s\S]*\}", raw_text)
-        if not json_match:
-            raise ValueError(f"Claude did not return valid JSON: {raw_text[:200]}")
-
-        parsed = json.loads(json_match.group(0))
+        parsed = _extract_json_dict(raw_text)
         narration_text = parsed.get("narration", "").strip()
         claims_raw = parsed.get("claims", [])
 
         if not narration_text:
-            raise ValueError("Claude returned empty narration text.")
+            raise ValueError(f"Claude did not return valid narration text: {raw_text[:200]}")
 
         claims = calculate_claim_spans(narration_text, claims_raw)
         narration = Narration(text=narration_text, language=language)
@@ -192,7 +219,7 @@ class GeminiNarrationWriterProvider:
     def __init__(self, model: str | None = None, api_key: str | None = None, timeout_sec: float = 60.0):
         load_env_fallback()
         self.api_key = api_key or os.environ.get("GEMINI_API_KEY", "").strip()
-        self.model = model or os.environ.get("GEMINI_NARRATION_MODEL", "gemini-2.5-flash")
+        self.model = model or os.environ.get("GEMINI_NARRATION_MODEL", "gemini-2.5-flash-lite")
         self.timeout_sec = timeout_sec
 
     def write(
@@ -226,15 +253,32 @@ class GeminiNarrationWriterProvider:
             "user-agent": "vidtool/0.1.0",
         }
 
-        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout_sec) as resp:
-                resp_data = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as err:
-            err_body = err.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"Gemini API request failed ({err.code}): {err_body}") from err
-        except Exception as err:
-            raise RuntimeError(f"Gemini API network failure: {err}") from err
+        resp_data = None
+        last_err = None
+        import time
+
+        for attempt in range(3):
+            req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout_sec) as resp:
+                    resp_data = json.loads(resp.read().decode("utf-8"))
+                    break
+            except urllib.error.HTTPError as err:
+                err_body = err.read().decode("utf-8", errors="replace")
+                last_err = err
+                if err.code in (429, 500, 503) and attempt < 2:
+                    time.sleep(2.0 * (attempt + 1))
+                    continue
+                raise RuntimeError(f"Gemini API request failed ({err.code}): {err_body}") from err
+            except Exception as err:
+                last_err = err
+                if attempt < 2:
+                    time.sleep(2.0 * (attempt + 1))
+                    continue
+                raise RuntimeError(f"Gemini API network failure: {err}") from err
+
+        if resp_data is None:
+            raise RuntimeError(f"Gemini API failed after 3 attempts: {last_err}")
 
         candidates = resp_data.get("candidates", [])
         if not candidates:
@@ -243,17 +287,12 @@ class GeminiNarrationWriterProvider:
         parts = candidates[0].get("content", {}).get("parts", [])
         raw_text = "".join(p.get("text", "") for p in parts)
 
-        # Parse JSON from response
-        json_match = re.search(r"\{[\s\S]*\}", raw_text)
-        if not json_match:
-            raise ValueError(f"Gemini did not return valid JSON: {raw_text[:200]}")
-
-        parsed = json.loads(json_match.group(0))
+        parsed = _extract_json_dict(raw_text)
         narration_text = parsed.get("narration", "").strip()
         claims_raw = parsed.get("claims", [])
 
         if not narration_text:
-            raise ValueError("Gemini returned empty narration text.")
+            raise ValueError(f"Gemini did not return valid narration text: {raw_text[:200]}")
 
         claims = calculate_claim_spans(narration_text, claims_raw)
         narration = Narration(text=narration_text, language=language)
