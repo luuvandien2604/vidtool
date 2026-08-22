@@ -48,16 +48,26 @@ def build_search_plan(requirement: AssetRequirement,
     entities = _clean_terms(list(requirement.entities) +
                             (beat.entities if beat else []))
     locations = _clean_terms(beat.locations if beat else [])
-    dates = _clean_terms((beat.dates if beat else []) +
-                         _YEAR_RE.findall(requirement.description))
+    narration_dates = _YEAR_RE.findall(beat.narration_text if beat else "")
+    desc_dates = _YEAR_RE.findall(requirement.description)
+    dates = _clean_terms((beat.dates if beat else []) + desc_dates + narration_dates)
     events = _clean_terms(beat.events if beat else [])
     kind_context = _KIND_CONTEXT.get(requirement.kind, "")
 
-    # primary: the requirement's lead entity + kind context + date
-    lead_entity = entities[0] if entities else ""
+    # primary: requirement's own entities take precedence; if multiple entities in requirement, join them
+    req_entities = _clean_terms(list(requirement.entities))
+    if len(req_entities) >= 2:
+        lead_entity = " ".join(req_entities[:2])
+    elif req_entities:
+        lead_entity = req_entities[0]
+    elif entities:
+        lead_entity = entities[0]
+    else:
+        lead_entity = ""
+
     primary_terms = [lead_entity, kind_context]
     primary_date = dates[0] if dates else ""
-    if primary_date:
+    if primary_date and primary_date not in lead_entity:
         primary_terms.append(primary_date)
     primary_query = " ".join(t for t in primary_terms if t).strip()
     if not primary_query:

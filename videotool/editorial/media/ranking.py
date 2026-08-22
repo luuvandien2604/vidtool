@@ -32,6 +32,8 @@ DEFAULT_PENALTIES = {
     "low_resolution": 0.20,
     "duplicate_immediate": 0.30,
     "duplicate_repeat": 0.15,   # per extra reuse of the same content
+    "non_latin_script": 0.15,   # non-Latin/Arabic script in title/description for Latin-script documentary
+    "unmatched_portrait_entity": 0.20,  # portrait requirement with missing/mismatched person entity
 }
 
 # markers of generic archival filler (matched against folded text)
@@ -61,6 +63,18 @@ def tokens(text: str) -> set[str]:
     return {t for t in fold(text).split() if len(t) > 2}
 
 
+def has_non_latin_script(cand: MediaCandidate) -> bool:
+    """Detect non-Latin script (e.g. Arabic, Cyrillic, CJK, Hebrew) or foreign language tags."""
+    text = f"{cand.title} {cand.description}"
+    # Non-Latin Unicode blocks: Arabic, Cyrillic, CJK, Hebrew, Persian
+    if re.search(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u0400-\u04FF\u4E00-\u9FFF\u0590-\u05FF]", text):
+        return True
+    # Foreign language filename suffix indicators (e.g. -ar.svg, _ar.jpg, -ru.png)
+    if re.search(r"[-_](?:ar|ru|zh|ja|he|fa)\.(?:svg|png|jpg|jpeg)$", cand.title.lower()):
+        return True
+    return False
+
+
 @dataclass
 class RankingPolicy:
     weights: dict = field(default_factory=lambda: dict(DEFAULT_WEIGHTS))
@@ -71,22 +85,37 @@ class RankingPolicy:
 
 
 def entity_match_score(plan: MediaSearchPlan, cand: MediaCandidate) -> float:
-    """Person/alias matching: full name > surname > none, folded."""
-    wanted = tokens(" ".join(plan.entity_terms))
-    if not wanted:
+    """Person/alias matching: full name > surname > primary entity > overlap > none, folded.
+    
+    Prevents multi-word place names from being treated as person surnames.
+    """
+    if not plan.entity_terms:
         return 0.5  # requirement has no who/what: neutral
+    wanted_all = tokens(" ".join(plan.entity_terms))
     have = (tokens(cand.title) | tokens(cand.description)
             | tokens(" ".join(cand.entities)))
     if not have:
         return 0.0
-    if wanted <= have:
+    if wanted_all <= have:
         return 1.0
-    # surname-only hit: "kessler" matches "ruth kessler 1985"
-    surnames = {fold(w.split()[-1]) for w in plan.entity_terms if w.split()}
-    if surnames & have:
+
+    # Check if the primary (first) entity term is fully satisfied
+    primary_entity = plan.entity_terms[0] if plan.entity_terms else ""
+    wanted_primary = tokens(primary_entity)
+    if wanted_primary and wanted_primary <= have:
+        return 0.8
+
+    # Surnames: only extract from multi-word person terms (not location terms)
+    loc_tokens = tokens(" ".join(plan.location_terms))
+    person_terms = [
+        t for t in plan.entity_terms
+        if len(t.split()) >= 2 and not (tokens(t) <= loc_tokens)
+    ]
+    surnames = {fold(w.split()[-1]) for w in person_terms if w.split()}
+    if surnames and (surnames & have):
         return 0.6
-    overlap = len(wanted & have)
-    return round(min(0.4, overlap / max(1, len(wanted)) * 0.4), 3)
+    overlap = len(wanted_all & have)
+    return round(min(0.4, overlap / max(1, len(wanted_all)) * 0.4), 3)
 
 
 def date_match_score(plan: MediaSearchPlan, cand: MediaCandidate) -> float:
@@ -107,24 +136,33 @@ def date_match_score(plan: MediaSearchPlan, cand: MediaCandidate) -> float:
 
 
 def location_match_score(plan: MediaSearchPlan, cand: MediaCandidate) -> float:
+    """Location matching: exact phrase adjacency > partial phrase > weak token overlap."""
+    if not plan.location_terms:
+        return 0.5
+    cand_text_folded = fold(" ".join([cand.title, cand.description, " ".join(cand.categories)]))
+    phrase_matches = 0
+    for loc in plan.location_terms:
+        loc_folded = fold(loc)
+        if loc_folded and loc_folded in cand_text_folded:
+            phrase_matches += 1
+    if phrase_matches == len(plan.location_terms):
+        return 1.0
+    elif phrase_matches > 0:
+        return round(0.5 + 0.5 * (phrase_matches / len(plan.location_terms)), 3)
+    # If no phrase matched, evaluate weak bag-of-words token overlap (capped at 0.4)
     wanted = tokens(" ".join(plan.location_terms))
     if not wanted:
         return 0.5
-    have = (tokens(cand.title) | tokens(cand.description)
-            | tokens(" ".join(cand.categories)))
-    if not wanted:
-        return 0.5
-    if wanted <= have:
-        return 1.0
-    return round(len(wanted & have) / len(wanted), 3)
+    have = tokens(cand_text_folded)
+    overlap = len(wanted & have)
+    return round(min(0.4, (overlap / len(wanted)) * 0.4), 3)
 
 
 def event_match_score(plan: MediaSearchPlan, cand: MediaCandidate) -> float:
+    """Event matching: real event terms > neutral (0.5). Avoids circular query fallback."""
+    if not plan.event_terms:
+        return 0.5
     wanted = tokens(" ".join(plan.event_terms))
-    if not wanted:
-        # fall back to plan's primary query terms minus kind words
-        wanted = tokens(plan.primary_query) - {
-            "portrait", "document", "map", "illustration", "photo"}
     if not wanted:
         return 0.5
     have = tokens(cand.title) | tokens(cand.description)
@@ -212,6 +250,11 @@ def score_candidate(plan: MediaSearchPlan, cand: MediaCandidate,
         penalties["duplicate_repeat"] = round(
             policy.penalties["duplicate_repeat"] * usage_count, 3)
 
+    if has_non_latin_script(cand):
+        penalties["non_latin_script"] = policy.penalties.get("non_latin_script", 0.15)
+    if plan.requirement_kind == "portrait" and components["entity_match"] < 0.5:
+        penalties["unmatched_portrait_entity"] = policy.penalties.get("unmatched_portrait_entity", 0.20)
+
     total = sum(components[k] * w for k, w in policy.weights.items())
     total = round(max(0.0, total - sum(penalties.values())), 4)
 
@@ -242,6 +285,10 @@ def _reason(plan: MediaSearchPlan, cand: MediaCandidate,
         bits.append("generic historical filler penalized")
     if penalties.get("low_resolution"):
         bits.append("below minimum resolution")
+    if penalties.get("non_latin_script"):
+        bits.append("non-Latin script penalized")
+    if penalties.get("unmatched_portrait_entity"):
+        bits.append("portrait missing entity match")
     return "; ".join(bits) or "candidate scored"
 
 
