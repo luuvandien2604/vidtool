@@ -24,19 +24,26 @@ def build_subtitles(narration: Narration | NarrationTiming) -> list[dict]:
     for word in narration.words:
         if not current:
             current = [word]
-            continue
-        span = word.end_sec - current[0].start_sec
-        if (len(current) >= SUBTITLE_MAX_WORDS or span >= SUBTITLE_MAX_SEC
-                or word.text.endswith((".", "!", "?"))):
-            current.append(word)
+        else:
+            span = word.end_sec - current[0].start_sec
+            if len(current) >= SUBTITLE_MAX_WORDS or span > SUBTITLE_MAX_SEC:
+                lines.append({
+                    "start_sec": round(current[0].start_sec, 3),
+                    "end_sec": round(current[-1].end_sec, 3),
+                    "text": " ".join(w.text for w in current),
+                })
+                current = [word]
+            else:
+                current.append(word)
+
+        if word.text.endswith((".", "!", "?")):
             lines.append({
                 "start_sec": round(current[0].start_sec, 3),
                 "end_sec": round(current[-1].end_sec, 3),
                 "text": " ".join(w.text for w in current),
             })
             current = []
-        else:
-            current.append(word)
+
     if current:
         lines.append({
             "start_sec": round(current[0].start_sec, 3),

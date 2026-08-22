@@ -82,3 +82,18 @@ def test_weights_are_configurable():
     cfg = PlanningConfig(weights={"semantic_match": 1.0})
     assert cfg.weights["semantic_match"] == 1.0
     assert "visual_novelty" in cfg.weights
+
+
+def test_transition_quality_uses_actual_previous_family():
+    """Verify transition scoring uses actual previous selection rather than default."""
+    from videotool.editorial.strategies import _transition_quality
+
+    # No previous history -> neutral high quality 1.0
+    assert _transition_quality(None, "archival_subject") == 1.0
+
+    # Same family -> lower transition score (encourages mode shifts)
+    assert _transition_quality("archival_subject", "archival_subject") == 0.55
+
+    # Different family -> higher transition score (good editorial pace)
+    assert _transition_quality("document_evidence", "archival_subject") == 0.90
+    assert _transition_quality("geographic_map", "causal_network") == 0.90

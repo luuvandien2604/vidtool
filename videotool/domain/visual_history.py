@@ -96,8 +96,8 @@ class HistoryEntry:
         return cls(**d)
 
 
-class VisualHistory:
-    """Ordered log of what the audience has recently seen."""
+class EpisodeVisualMemory:
+    """Ordered log and query engine of what the audience has recently seen."""
 
     def __init__(self, max_window: int = 12):
         self.entries: list[HistoryEntry] = []
@@ -153,10 +153,28 @@ class VisualHistory:
 
     # ---- persistence ---------------------------------------------------
     def to_dict(self) -> dict:
-        return {"entries": [e.to_dict() for e in self.entries]}
+        return {"schema_version": 1, "entries": [e.to_dict() for e in self.entries]}
 
     @classmethod
-    def from_dict(cls, d: dict) -> "VisualHistory":
+    def from_dict(cls, d: dict) -> "EpisodeVisualMemory":
         h = cls()
         h.entries = [HistoryEntry.from_dict(e) for e in d.get("entries", [])]
         return h
+
+
+class VisualHistory(EpisodeVisualMemory):
+    """Backward compatibility alias for EpisodeVisualMemory."""
+    pass
+
+
+class NoveltyScorer:
+    """Calculates visual novelty scores against visual memory."""
+
+    @staticmethod
+    def score_family_novelty(memory: EpisodeVisualMemory, family: str) -> float:
+        return memory.family_recency(family)
+
+    @staticmethod
+    def score_signature_novelty(memory: EpisodeVisualMemory, signature: str) -> float:
+        return memory.signature_recency(signature)
+

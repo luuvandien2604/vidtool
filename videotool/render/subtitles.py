@@ -50,6 +50,24 @@ def calculate_safe_zone_margins(safe_zone: dict[str, float] | tuple[float, float
     return max(0, margin_l), max(0, margin_r), max(0, margin_v)
 
 
+def escape_ass_text(text: str) -> str:
+    """Escape text for safe literal inclusion in ASS Dialogue lines.
+
+    Handles:
+    - Backslashes: converted to fullwidth reverse solidus U+FF3C to prevent tag injection
+    - Curly braces '{' and '}': converted to fullwidth braces U+FF5B / U+FF5D to prevent ASS override tag parsing
+    - Newlines: converted to ASS '\\N' linebreaks
+    - Preserves all Unicode diacritics (Vietnamese, German, French, etc.) and punctuation.
+    """
+    if not text:
+        return ""
+    escaped = text.replace("\r\n", "\n").replace("\r", "\n")
+    escaped = escaped.replace("\\", "\uff3c")
+    escaped = escaped.replace("{", "\uff5b").replace("}", "\uff5d")
+    escaped = escaped.replace("\n", "\\N")
+    return escaped
+
+
 def generate_subtitles_ass(timeline_data: dict[str, Any],
                            safe_zone: dict[str, float] | tuple[float, float, float, float] | None = None,
                            canvas: dict[str, Any] | None = None) -> str:
@@ -95,8 +113,7 @@ def generate_subtitles_ass(timeline_data: dict[str, Any],
     for sub in subtitles:
         start_t = sec_to_ass_time(sub["start_sec"])
         end_t = sec_to_ass_time(sub["end_sec"])
-        # Escape any special characters or line breaks if present
-        text = sub.get("text", "").replace("\n", "\\N")
+        text = escape_ass_text(sub.get("text", ""))
         events.append(f"Dialogue: 0,{start_t},{end_t},Default,,0,0,0,,{text}")
 
     return "\n".join(script_info + styles + events) + "\n"
@@ -108,7 +125,7 @@ def generate_node_text_dialogue(text: str, start_sec: float, end_sec: float,
     """Generate an ASS Dialogue line positioned at explicit pixel coordinates."""
     start_t = sec_to_ass_time(start_sec)
     end_t = sec_to_ass_time(end_sec)
-    clean_text = text.replace("\n", "\\N")
+    clean_text = escape_ass_text(text)
     # \an5 positions anchor at center; \pos(cx, cy) places center at specified coordinates
     pos_tag = f"{{\\an5\\pos({center_x_px},{center_y_px})}}"
     return f"Dialogue: 1,{start_t},{end_t},{style_name},,0,0,0,,{pos_tag}{clean_text}"

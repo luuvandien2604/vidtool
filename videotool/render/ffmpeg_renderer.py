@@ -18,6 +18,7 @@ from videotool.domain.narration import NarrationAudio
 from videotool.editorial.media.cache import MediaCache
 from videotool.render.frame_plan import BeatFramePlan, EpisodeFramePlan, MediaRenderElement
 from videotool.render.interfaces import Renderer, RenderResult
+from videotool.render.subtitles import escape_ass_text
 
 
 def check_ffmpeg_available() -> tuple[bool, str]:
@@ -182,7 +183,7 @@ class FFmpegRenderer(Renderer):
                 end_rel = min(duration, elem.exit_sec - beat.start_sec)
                 start_str = f"0:{int(start_rel//60):02d}:{int(start_rel%60):02d}.{int(round((start_rel%1)*100)):02d}"
                 end_str = f"0:{int(end_rel//60):02d}:{int(end_rel%60):02d}.{int(round((end_rel%1)*100)):02d}"
-                clean_text = elem.text.replace("\n", "\\N")
+                clean_text = escape_ass_text(elem.text)
                 pos_tag = f"{{\\an5\\pos({elem.bounds_px.center_x},{elem.bounds_px.center_y})}}"
                 ass_lines.append(
                     f"Dialogue: 1,{start_str},{end_str},{elem.style_name},,0,0,0,,{pos_tag}{clean_text}"

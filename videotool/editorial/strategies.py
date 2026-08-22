@@ -173,14 +173,12 @@ _TRANSITION_AFFINITY: dict[str, set[str]] = {
 }
 
 
-def _transition_quality(prev_beat: SemanticBeat | None, family: str) -> float:
-    if prev_beat is None:
+def _transition_quality(prev_family: str | None, candidate_family: str) -> float:
+    """Transition scoring using the actual previous visual family."""
+    if not prev_family:
         return 1.0
-    prev_family = FUNCTION_CANDIDATES.get(prev_beat.semantic_function, [""])[0]
-    prev_def = STRATEGY_CATALOG.get(prev_family)
-    prev_family_name = prev_def.visual_family if prev_def else ""
     # moving between family "modes" reads as an editorial change - good
-    if prev_family_name == family:
+    if prev_family == candidate_family:
         return 0.55
     return 0.9
 
@@ -240,12 +238,19 @@ class StrategyPlanner:
         streak_family, streak_len = history.family_streak()
         at_streak_limit = (streak_len >= self.config.max_family_streak)
 
+        recent = history.recent(1)
+        prev_family: str | None = recent[0].visual_family if recent else None
+        if prev_family is None and prev_beat is not None:
+            prev_cand_ids = FUNCTION_CANDIDATES.get(prev_beat.semantic_function, [""])
+            prev_def = STRATEGY_CATALOG.get(prev_cand_ids[0]) if prev_cand_ids else None
+            prev_family = prev_def.visual_family if prev_def else None
+
         for cand in candidates:
             scores: dict[str, float] = {}
             scores["semantic_match"] = self._semantic_match(beat, cand)
             scores["storytelling_value"] = self._storytelling(beat, cand)
             scores["visual_novelty"] = self._novelty(history, cand)
-            scores["transition_quality"] = _transition_quality(prev_beat, cand.visual_family)
+            scores["transition_quality"] = _transition_quality(prev_family, cand.visual_family)
             scores["asset_quality"] = self._asset_quality(beat, cand)
 
             penalty = 0.0
