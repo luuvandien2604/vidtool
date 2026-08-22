@@ -83,7 +83,21 @@ A dedicated regression test suite was created in `tests/test_media_relevance_reg
 
 ---
 
-## 5. Limitations & Future Scope
+## 5. Media Type Gating vs. Candidate Ranking (`req_beat_0007_document`)
+
+In `req_beat_0007_document`, `Schabowski-portrait.jpg` appears at the top of raw candidate ranking due to matching the `"Schabowski"` entity. However, the system's architecture enforces a strict two-tier verification:
+
+1. **Ranking Layer (`ranking.py`)**: Computes `media_type_match_score() = 0.30` because `cand.media_type ("PHOTO")` does not match `requirement_kind ("document")`.
+2. **Acquisition Gate (`acquisition.py:180-187`)**: Enforces `if entry.components.get("media_type_match") < 0.5: REJECT for type mismatch`.
+
+As a result:
+- The portrait is **REJECTED** and **NEVER bound as a document asset**.
+- The requirement correctly remains **unresolved (`None`)** when no authentic historical document candidate exists in the pool.
+- Downstream, `StrategyFeasibilityStage` cleanly switches or degrades the beat composition rather than rendering an inappropriate media type. "Missing asset beats wrong asset."
+
+---
+
+## 6. Limitations & Future Scope
 
 While these metadata-level heuristic fixes completely solve the diagnosed failures:
 - **No True Computer Vision**: A photo of a different human (e.g. another politician) with metadata claiming to be Schabowski, or an unlabeled image with misleading tags, could still score favorably.

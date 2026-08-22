@@ -28,6 +28,10 @@ from videotool.render.interfaces import Renderer, RenderResult
 from videotool.render.registry import RENDERERS, get_renderer
 from videotool.render.subtitles import generate_subtitles_ass
 from videotool.render.svg_overlay import generate_svg_overlay
+from videotool.render.vox_theme import (DEFAULT_VOX_THEME, VoxColors,
+                                        VoxSpacing, VoxTheme, VoxTypography)
+from videotool.render.widgets import (StatBadgeItem, StatBadgeWidget,
+                                      TimelineNodeItem, TimelineWidget)
 
 
 def render_episode(episode_id: str, store: ArtifactStore, output_path: str | Path,
@@ -131,4 +135,13 @@ __all__ = [
     "AUDIO_PROVIDERS",
     "register_audio_provider",
     "build_audio_provider",
+    "DEFAULT_VOX_THEME",
+    "VoxTheme",
+    "VoxColors",
+    "VoxTypography",
+    "VoxSpacing",
+    "TimelineWidget",
+    "TimelineNodeItem",
+    "StatBadgeWidget",
+    "StatBadgeItem",
 ]

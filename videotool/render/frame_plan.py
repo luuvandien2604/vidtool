@@ -482,6 +482,7 @@ def build_episode_frame_plan(
             canvas_w=canvas_w,
             canvas_h=canvas_h,
             accent_color=accent,
+            visual_family=visual_family,
         )
 
         beat_plans.append(BeatFramePlan(
