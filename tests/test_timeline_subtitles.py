@@ -110,15 +110,19 @@ def test_escape_ass_text_comprehensive():
     # Normal text
     assert escape_ass_text("Simple text") == "Simple text"
 
-    # Braces (ASS override delimiters) converted to fullwidth
+    # Braces (ASS override delimiters) converted to proportional small brackets
     escaped_braces = escape_ass_text("{quoted text}")
     assert "{" not in escaped_braces and "}" not in escaped_braces
-    assert escaped_braces == "\uff5bquoted text\uff5d"
+    assert escaped_braces == "\ufe5bquoted text\ufe5c"
 
-    # Backslashes converted to safe fullwidth solidus
+    # Backslashes before regular characters stay literal
     escaped_bs = escape_ass_text("Path\\to\\file")
-    assert "\\" not in escaped_bs
-    assert escaped_bs == "Path\uff3cto\uff3cfile"
+    assert escaped_bs == "Path\\to\\file"
+
+    # Backslashes before N/n/h are protected with zero-width space to prevent accidental ASS breaks
+    escaped_n = escape_ass_text("Step \\Notes and \\help")
+    assert "\\\u200bNotes" in escaped_n
+    assert "\\\u200bhelp" in escaped_n
 
     # Newlines converted to \N
     assert escape_ass_text("Line 1\nLine 2\r\nLine 3") == "Line 1\\NLine 2\\NLine 3"

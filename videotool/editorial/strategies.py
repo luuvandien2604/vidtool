@@ -240,10 +240,6 @@ class StrategyPlanner:
 
         recent = history.recent(1)
         prev_family: str | None = recent[0].visual_family if recent else None
-        if prev_family is None and prev_beat is not None:
-            prev_cand_ids = FUNCTION_CANDIDATES.get(prev_beat.semantic_function, [""])
-            prev_def = STRATEGY_CATALOG.get(prev_cand_ids[0]) if prev_cand_ids else None
-            prev_family = prev_def.visual_family if prev_def else None
 
         for cand in candidates:
             scores: dict[str, float] = {}

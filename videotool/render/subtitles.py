@@ -53,17 +53,23 @@ def calculate_safe_zone_margins(safe_zone: dict[str, float] | tuple[float, float
 def escape_ass_text(text: str) -> str:
     """Escape text for safe literal inclusion in ASS Dialogue lines.
 
-    Handles:
-    - Backslashes: converted to fullwidth reverse solidus U+FF3C to prevent tag injection
-    - Curly braces '{' and '}': converted to fullwidth braces U+FF5B / U+FF5D to prevent ASS override tag parsing
-    - Newlines: converted to ASS '\\N' linebreaks
-    - Preserves all Unicode diacritics (Vietnamese, German, French, etc.) and punctuation.
+    Maintains visible typography and Unicode text fidelity while preventing
+    ASS override tag injection:
+    - Real line breaks (\\r\\n, \\r, \\n) are converted to ASS hard breaks '\\N'.
+    - Literal backslashes before N/n/h (e.g. \\notes, \\help) are protected with zero-width
+      spacing so they render as literal backslashes without triggering unwanted ASS breaks.
+    - Other literal backslashes (e.g. C:\\Windows) remain pure literal '\\'.
+    - Curly braces '{' and '}' are mapped to typographic small curly brackets U+FE5B / U+FE5C
+      which preserve normal proportional character width (preventing wide fullwidth gaps)
+      while preventing ASS override tag parsing.
+    - Preserves all Unicode characters, Vietnamese diacritics, and punctuation.
     """
     if not text:
         return ""
+    import re
     escaped = text.replace("\r\n", "\n").replace("\r", "\n")
-    escaped = escaped.replace("\\", "\uff3c")
-    escaped = escaped.replace("{", "\uff5b").replace("}", "\uff5d")
+    escaped = re.sub(r"\\([Nnh])", lambda m: f"\\\u200b{m.group(1)}", escaped)
+    escaped = escaped.replace("{", "\ufe5b").replace("}", "\ufe5c")
     escaped = escaped.replace("\n", "\\N")
     return escaped
 

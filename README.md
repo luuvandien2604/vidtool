@@ -1,4 +1,4 @@
-# videotool — AI Editorial Director (Phases 1, 2A, 2C, 2D, 2E)
+# videotool — AI Editorial Director (Phases 1, 2A, 2C, 2D, 2E, 2F Hardened)
 
 Automated documentary video production system. The pipeline transforms
 narration + word timing into validated semantic artifacts (beats, art direction,
@@ -12,7 +12,7 @@ and synchronized audio track plumbing.
 ## Quick start
 
 ```bash
-# Set up virtual environment and run pure-Python test suite (406 tests)
+# Set up virtual environment and run pure-Python test suite (430+ tests)
 python3 -m venv .venv && .venv/bin/pip install pytest
 make test
 
@@ -60,6 +60,7 @@ Narration + word timing
 → Motion planning (semantic keyframes, Ken Burns focus trajectories)
 → Timeline (renderer-agnostic; subtitles in bottom safe zone)
 → Frame planning engine (compiles visual elements, typography, and vector overlays)
+→ Render SceneGraph Adapter (hierarchical scene graph representation)
 → Audio synthesis engine (deterministic placeholder / TTS provider seam)
 → FFmpeg renderer (per-beat isolated encode + lossless concat + subtitle burn-in + audio mux)
 ```
@@ -83,18 +84,19 @@ Domain invariants enforced by tests:
 ## Layout
 
 ```
-videotool/domain/      typed models (narration, audio, geometry, timeline, etc.)
+videotool/domain/      typed models (narration, audio, geometry, timeline, EpisodeVisualMemory, etc.)
 videotool/ai/          BeatAnalyzer / ArtDirectionGenerator interfaces + heuristics
 videotool/editorial/   strategy planner, feasibility pass, composition families,
                        motion, timeline, media acquisition (query planning,
-                       ranking, licensing, cache, validation), validation
-videotool/providers/   media (fixture + Wikimedia) and audio providers (synthetic silence + click track)
-videotool/render/      frame planning, ASS subtitles, SVG vectors, FFmpeg renderer
-videotool/pipeline/    stage runner with fingerprinted resume
+                       ranking, licensing, cache, validation), registries
+videotool/providers/   media (fixture + Wikimedia), audio providers, and AI topic providers
+videotool/render/      frame planning, SceneGraph adapter, ASS subtitles, SVG vectors, FFmpeg renderer
+videotool/pipeline/    decoupled orchestration (PipelineContext, StageExecutor,
+                       StageRegistry, ArtifactStore, ExecutionPolicy, stages/)
 videotool/fixtures/    acceptance fixture (The Fall of the Berlin Wall)
-tests/                 unit & integration suites (406 pure-Python tests, 4 render tests)
-docs/                  AUDIT.md, PHASE1_REPORT.md, PHASE2A_REPORT.md, PHASE2C1_GEOMETRY.md, PHASE2D_RENDERER.md, PHASE2E_AUDIO.md
+tests/                 unit, integration, parity, benchmark suites (430+ pure-Python tests, 4 render tests)
+docs/                  ARCHITECTURE_REVIEW.md, AUDIT.md, PHASE1_REPORT.md, PHASE2A_REPORT.md, ...
 ```
 
 Runtime has zero third-party Python dependencies; development dependencies are `pytest`.
-See `docs/PHASE2E_AUDIO.md` for technical report on the audio plumbing subsystem.
+See `docs/ARCHITECTURE_REVIEW.md` for technical report on the Phase 2F architecture hardening.

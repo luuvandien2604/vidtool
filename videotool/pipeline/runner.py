@@ -87,6 +87,7 @@ from videotool.editorial.timing import (
 from videotool.pipeline.context import EpisodeInput, PipelineContext
 from videotool.pipeline.executor import StageExecutor
 from videotool.pipeline.fingerprints import STAGE_VERSIONS, stable_hash
+from videotool.pipeline.policy import ExecutionPolicy
 from videotool.pipeline.registry import StageRegistry
 from videotool.providers.media import build_provider
 from videotool.providers.timing import DeterministicNarrationTimingProvider
@@ -128,35 +129,43 @@ class PipelineResult:
     requirements: list[AssetRequirement] = field(default_factory=list)
     media_search_plan: list = field(default_factory=list)
     media_candidates: dict = field(default_factory=dict)
+    media_acquisition_result: dict = field(default_factory=dict)
     assets: list[MediaAsset] = field(default_factory=list)
-    acquisition_traces: list = field(default_factory=list)
+    media_acquisition_trace: list[AcquisitionTrace] = field(default_factory=list)
+    media_attribution: dict = field(default_factory=dict)
     compositions: list[VisualComposition] = field(default_factory=list)
     history: VisualHistory | None = None
     timing_bindings: list[TimingBinding] = field(default_factory=list)
     geometry_plans: list[GeometryPlan] = field(default_factory=list)
     motion: MotionPlan | None = None
-    timeline: dict | None = None
+    timeline: dict = field(default_factory=dict)
+    ok: bool = True
     validation: dict = field(default_factory=dict)
-    ok: bool = False
 
 
 class PipelineRunner:
-    """Orchestrates discrete pipeline stages via PipelineContext and StageExecutor."""
+    """Orchestrates pipeline execution, state machine, and artifact storage."""
 
     def __init__(
         self,
         store: ArtifactStore,
         mode: str = "final",
         force: bool = False,
+        policy: ExecutionPolicy | None = None,
         planner_config: PlanningConfig | None = None,
         media_config: MediaAcquisitionConfig | None = None,
         timing_provider: Any | None = None,
         timing_policy: EditorialTimingPolicy | None = None,
     ):
         self.store = store
-        self.mode = mode
-        self.force = force
-        self.planner_config = planner_config or PlanningConfig()
+        self.policy = policy or ExecutionPolicy(
+            mode=mode,
+            force=force,
+            max_family_streak=planner_config.max_family_streak if planner_config else 2,
+        )
+        self.planner_config = planner_config or PlanningConfig(
+            max_family_streak=self.policy.max_family_streak
+        )
         self.beat_analyzer = HeuristicBeatAnalyzer()
         self.art_director = HeuristicArtDirector()
         self.planner = StrategyPlanner(self.planner_config)
@@ -174,6 +183,32 @@ class PipelineRunner:
         self._meta: dict = {}
         self._statuses: dict = {}
         self._repairs: list[dict] = []
+
+    @property
+    def mode(self) -> str:
+        return self.policy.mode
+
+    @mode.setter
+    def mode(self, val: str) -> None:
+        self.policy = ExecutionPolicy(
+            mode=val,
+            force=self.policy.force,
+            max_family_streak=self.policy.max_family_streak,
+            cache_enabled=self.policy.cache_enabled,
+        )
+
+    @property
+    def force(self) -> bool:
+        return self.policy.force
+
+    @force.setter
+    def force(self, val: bool) -> None:
+        self.policy = ExecutionPolicy(
+            mode=self.policy.mode,
+            force=val,
+            max_family_streak=self.policy.max_family_streak,
+            cache_enabled=self.policy.cache_enabled,
+        )
 
     def _media_config(self, ep: EpisodeInput) -> MediaAcquisitionConfig:
         cfg = self._media_config_override or MediaAcquisitionConfig()
@@ -205,8 +240,7 @@ class PipelineRunner:
         ctx = PipelineContext(
             episode=ep,
             store=self.store,
-            mode=self.mode,
-            force=self.force,
+            policy=self.policy,
             planner_config=self.planner_config,
             media_config=self._media_config(ep),
             timing_provider=self.timing_provider,

@@ -15,6 +15,7 @@ from videotool.editorial.media import MediaAcquisitionConfig
 from videotool.editorial.strategies import PlanningConfig, StrategyPlanner
 from videotool.editorial.timing import EditorialTimingPolicy
 from videotool.pipeline.artifact_store import ArtifactStore
+from videotool.pipeline.policy import ExecutionPolicy
 from videotool.providers.media import build_provider
 from videotool.providers.timing import DeterministicNarrationTimingProvider
 
@@ -40,6 +41,7 @@ class PipelineContext:
         store: ArtifactStore,
         mode: str = "final",
         force: bool = False,
+        policy: ExecutionPolicy | None = None,
         planner_config: PlanningConfig | None = None,
         media_config: MediaAcquisitionConfig | None = None,
         timing_provider: Any | None = None,
@@ -51,9 +53,14 @@ class PipelineContext:
     ):
         self.episode = episode
         self.store = store
-        self.mode = mode
-        self.force = force
-        self.planner_config = planner_config or PlanningConfig()
+        self.policy = policy or ExecutionPolicy(
+            mode=mode,
+            force=force,
+            max_family_streak=planner_config.max_family_streak if planner_config else 2,
+        )
+        self.planner_config = planner_config or PlanningConfig(
+            max_family_streak=self.policy.max_family_streak
+        )
         self._media_config_override = media_config
         self.timing_provider = timing_provider or DeterministicNarrationTimingProvider()
         self.timing_policy = timing_policy or EditorialTimingPolicy()
@@ -67,6 +74,36 @@ class PipelineContext:
         self._meta: dict[str, Any] = {}
         self._statuses: dict[str, dict[str, str]] = {}
         self._repairs: list[dict[str, str]] = []
+
+    @property
+    def repairs(self) -> list[dict[str, str]]:
+        return self._repairs
+
+    @property
+    def mode(self) -> str:
+        return self.policy.mode
+
+    @mode.setter
+    def mode(self, val: str) -> None:
+        self.policy = ExecutionPolicy(
+            mode=val,
+            force=self.policy.force,
+            max_family_streak=self.policy.max_family_streak,
+            cache_enabled=self.policy.cache_enabled,
+        )
+
+    @property
+    def force(self) -> bool:
+        return self.policy.force
+
+    @force.setter
+    def force(self, val: bool) -> None:
+        self.policy = ExecutionPolicy(
+            mode=self.policy.mode,
+            force=val,
+            max_family_streak=self.policy.max_family_streak,
+            cache_enabled=self.policy.cache_enabled,
+        )
 
     @property
     def episode_id(self) -> str:
