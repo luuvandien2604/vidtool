@@ -63,7 +63,8 @@ class GeminiEditorialDirectorProvider:
 
     def __init__(
         self,
-        model_name: str = "gemini-2.5-flash-lite",
+        # gemini-flash-latest is a Google-maintained alias that auto-updates to the current GA Flash model
+        model_name: str = "gemini-flash-latest",
         api_key: str | None = None,
         timeout_sec: float = 15.0,
     ):

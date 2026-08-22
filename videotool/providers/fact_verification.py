@@ -126,7 +126,7 @@ class ClaudeWebSearchFactVerifier:
     def __init__(self, model: str | None = None, api_key: str | None = None, timeout_sec: float = 90.0):
         load_env_fallback()
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "").strip()
-        self.model = model or os.environ.get("ANTHROPIC_NARRATION_MODEL", "claude-3-7-sonnet-20250219")
+        self.model = model or os.environ.get("ANTHROPIC_VERIFICATION_MODEL", "claude-sonnet-5")
         self.timeout_sec = timeout_sec
 
     def verify(
@@ -226,7 +226,8 @@ class GeminiWebSearchFactVerifier:
     def __init__(self, model: str | None = None, api_key: str | None = None, timeout_sec: float = 90.0):
         load_env_fallback()
         self.api_key = api_key or os.environ.get("GEMINI_API_KEY", "").strip()
-        self.model = model or os.environ.get("GEMINI_NARRATION_MODEL", "gemini-2.5-flash-lite")
+        # gemini-flash-latest is a Google-maintained alias that auto-updates to the current GA Flash model
+        self.model = model or os.environ.get("GEMINI_VERIFICATION_MODEL", "gemini-flash-latest")
         self.timeout_sec = timeout_sec
 
     def verify(
