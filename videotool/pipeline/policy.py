@@ -13,6 +13,8 @@ class ExecutionPolicy:
     force: bool = False
     max_family_streak: int = 2
     cache_enabled: bool = True
+    editorial_ai_enabled: bool = False
+    editorial_ai_provider: str = "mock"
 
     @property
     def allow_placeholders(self) -> bool:
@@ -29,4 +31,6 @@ class ExecutionPolicy:
             "max_family_streak": self.max_family_streak,
             "cache_enabled": self.cache_enabled,
             "allow_placeholders": self.allow_placeholders,
+            "editorial_ai_enabled": self.editorial_ai_enabled,
+            "editorial_ai_provider": self.editorial_ai_provider,
         }

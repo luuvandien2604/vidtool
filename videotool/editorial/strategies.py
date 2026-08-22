@@ -209,9 +209,13 @@ class StrategyPlanner:
             ids.append("linear_timeline")
         return [STRATEGY_CATALOG[i] for i in ids if i in STRATEGY_CATALOG]
 
-    def select(self, beats: list[SemanticBeat],
-               history: VisualHistory | None = None) -> list[SelectionRecord]:
-        """Score candidates per beat.
+    def select(
+        self,
+        beats: list[SemanticBeat],
+        history: VisualHistory | None = None,
+        intents: dict[str, Any] | None = None,
+    ) -> list[SelectionRecord]:
+        """Score candidates per beat with optional AI Editorial Director intent.
 
         The planner simulates its own selections into `history` as it walks
         the beats, so novelty penalties and streak limits apply BETWEEN beats
@@ -220,7 +224,8 @@ class StrategyPlanner:
         history = history if history is not None else VisualHistory()
         records: list[SelectionRecord] = []
         for i, beat in enumerate(beats):
-            record = self._select_one(beat, beats[i - 1] if i else None, history)
+            intent = intents.get(beat.beat_id) if intents else None
+            record = self._select_one(beat, beats[i - 1] if i else None, history, intent=intent)
             records.append(record)
             history.record(HistoryEntry(
                 beat_id=beat.beat_id,
@@ -231,8 +236,13 @@ class StrategyPlanner:
             ))
         return records
 
-    def _select_one(self, beat: SemanticBeat, prev_beat: SemanticBeat | None,
-                    history: VisualHistory) -> SelectionRecord:
+    def _select_one(
+        self,
+        beat: SemanticBeat,
+        prev_beat: SemanticBeat | None,
+        history: VisualHistory,
+        intent: Any | None = None,
+    ) -> SelectionRecord:
         candidates = self.candidates_for(beat)
         scored: list[ScoredCandidate] = []
         streak_family, streak_len = history.family_streak()
@@ -268,6 +278,35 @@ class StrategyPlanner:
 
             total = sum(scores[k] * w for k, w in self.config.weights.items())
             total = round(max(0.0, total - penalty), 4)
+
+            # Optional Bounded AI Editorial Director nudge (Phase 3A)
+            if (
+                intent is not None
+                and not getattr(intent, "is_fallback", False)
+                and float(getattr(intent, "confidence", 0.0)) > 0.0
+                and not at_streak_limit  # AI never overrides hard streak limits
+            ):
+                max_ai_delta = 0.10
+                ai_weight = min(max(float(getattr(intent, "confidence", 1.0)), 0.0), 1.0)
+                ai_delta = 0.0
+
+                cand_strats = getattr(intent, "candidate_strategies", [])
+                if cand.strategy_id in cand_strats:
+                    ai_delta += max_ai_delta * ai_weight
+
+                avoid_fams = getattr(intent, "avoid_visual_families", [])
+                if cand.visual_family in avoid_fams:
+                    ai_delta -= max_ai_delta * ai_weight
+
+                pref_fams = getattr(intent, "preferred_visual_families", [])
+                if cand.visual_family in pref_fams:
+                    ai_delta += (max_ai_delta * 0.5) * ai_weight
+
+                # Clamp AI delta within [-max_ai_delta, max_ai_delta]
+                ai_delta = max(-max_ai_delta, min(max_ai_delta, ai_delta))
+                total = round(max(0.0, min(1.0, total + ai_delta)), 4)
+                scores["ai_alignment"] = round(ai_delta, 3)
+
             scored.append(ScoredCandidate(
                 strategy_id=cand.strategy_id,
                 visual_family=cand.visual_family,

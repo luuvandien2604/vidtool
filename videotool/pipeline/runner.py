@@ -156,6 +156,7 @@ class PipelineRunner:
         media_config: MediaAcquisitionConfig | None = None,
         timing_provider: Any | None = None,
         timing_policy: EditorialTimingPolicy | None = None,
+        editorial_director: Any | None = None,
     ):
         self.store = store
         self.policy = policy or ExecutionPolicy(
@@ -175,6 +176,7 @@ class PipelineRunner:
         )
         self.timing_policy = timing_policy or EditorialTimingPolicy()
         self.geometry_builder = SemanticGeometryBuilder()
+        self.editorial_director = editorial_director
 
         self.registry = StageRegistry()
         self.executor = StageExecutor()
@@ -195,6 +197,8 @@ class PipelineRunner:
             force=self.policy.force,
             max_family_streak=self.policy.max_family_streak,
             cache_enabled=self.policy.cache_enabled,
+            editorial_ai_enabled=self.policy.editorial_ai_enabled,
+            editorial_ai_provider=self.policy.editorial_ai_provider,
         )
 
     @property
@@ -208,6 +212,8 @@ class PipelineRunner:
             force=val,
             max_family_streak=self.policy.max_family_streak,
             cache_enabled=self.policy.cache_enabled,
+            editorial_ai_enabled=self.policy.editorial_ai_enabled,
+            editorial_ai_provider=self.policy.editorial_ai_provider,
         )
 
     def _media_config(self, ep: EpisodeInput) -> MediaAcquisitionConfig:
@@ -249,6 +255,7 @@ class PipelineRunner:
             art_director=self.art_director,
             planner=self.planner,
             geometry_builder=self.geometry_builder,
+            editorial_director=self.editorial_director,
         )
 
         media_config = ctx.media_config

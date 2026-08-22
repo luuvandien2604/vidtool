@@ -50,6 +50,7 @@ class PipelineContext:
         art_director: Any | None = None,
         planner: StrategyPlanner | None = None,
         geometry_builder: Any | None = None,
+        editorial_director: Any | None = None,
     ):
         self.episode = episode
         self.store = store
@@ -68,6 +69,7 @@ class PipelineContext:
         self.art_director = art_director or HeuristicArtDirector()
         self.planner = planner or StrategyPlanner(self.planner_config)
         self.geometry_builder = geometry_builder or SemanticGeometryBuilder()
+        self.editorial_director = editorial_director
 
         # In-memory stage state & execution logs
         self.state: dict[str, Any] = {}

@@ -1,4 +1,4 @@
-# videotool — AI Editorial Director (Phases 1, 2A, 2C, 2D, 2E, 2F Hardened)
+# videotool — AI Editorial Director (Phases 1, 2A, 2C, 2D, 2E, 2F Hardened, Phase 3A AI Editorial Director)
 
 Automated documentary video production system. The pipeline transforms
 narration + word timing into validated semantic artifacts (beats, art direction,
@@ -12,7 +12,7 @@ and synchronized audio track plumbing.
 ## Quick start
 
 ```bash
-# Set up virtual environment and run pure-Python test suite (430+ tests)
+# Set up virtual environment and run pure-Python test suite (448+ tests)
 python3 -m venv .venv && .venv/bin/pip install pytest
 make test
 

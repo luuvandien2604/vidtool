@@ -92,10 +92,68 @@ class VisualStrategyPlanStage(BasePipelineStage):
             ctx.episode_id,
             ctx.state["beats_semantic_hash"],
             planner_cfg,
+            ctx.policy.editorial_ai_enabled,
+            ctx.policy.editorial_ai_provider if ctx.policy.editorial_ai_enabled else "disabled",
         )
 
     def execute(self, ctx: PipelineContext) -> list[dict]:
-        records = ctx.planner.select(ctx.state["beats"], VisualHistory())
+        intents: dict[str, Any] = {}
+        if ctx.policy.editorial_ai_enabled:
+            from videotool.editorial.director import (
+                EDITORIAL_DIRECTOR_PROMPT_VERSION,
+                EditorialContextProjector,
+                EditorialDirector,
+                build_director_provider,
+            )
+            director = ctx.editorial_director
+            if director is None:
+                provider = build_director_provider(ctx.policy.editorial_ai_provider)
+                director = EditorialDirector(provider=provider)
+
+            # Running visual memory for request projection
+            sim_memory = VisualHistory()
+            intents_log = []
+
+            for beat in ctx.state["beats"]:
+                req = EditorialContextProjector.project_beat(
+                    beat=beat,
+                    art_direction=ctx.state.get("art_direction"),
+                    visual_memory=sim_memory,
+                )
+                intent, val_res = director.propose(req)
+                intents[beat.beat_id] = intent
+                intents_log.append({
+                    "request": req.to_dict(),
+                    "intent": intent.to_dict(),
+                    "validation": val_res.to_dict(),
+                })
+
+                # Advance simulated memory for next beat's projection
+                sim_family = intent.preferred_visual_families[0] if intent.preferred_visual_families else "archival_subject"
+                sim_strat = intent.candidate_strategies[0] if intent.candidate_strategies else "archival_portrait"
+                from videotool.domain.visual_history import HistoryEntry
+                sim_memory.record(HistoryEntry(
+                    beat_id=beat.beat_id,
+                    visual_family=sim_family,
+                    strategy=sim_strat,
+                    composition_signature=f"planned:{sim_strat}",
+                    information_density=beat.information_density,
+                ))
+
+            # Persist editorial_intents artifact for observability
+            ctx.store.save(ctx.episode_id, "editorial_intents", {
+                "schema_version": 1,
+                "prompt_version": EDITORIAL_DIRECTOR_PROMPT_VERSION,
+                "provider": director.provider.provider_id,
+                "model": director.provider.model_name,
+                "items": [i.to_dict() for i in intents.values()],
+                "diagnostics": intents_log,
+            })
+
+        if intents:
+            records = ctx.planner.select(ctx.state["beats"], VisualHistory(), intents=intents)
+        else:
+            records = ctx.planner.select(ctx.state["beats"], VisualHistory())
         records = _repair_strategy_records(records, ctx.state["beats"], ctx)
         return [r.to_dict() for r in records]
 
