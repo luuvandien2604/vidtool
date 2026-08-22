@@ -14,5 +14,6 @@ markers = [
     "live_media: opt-in tests that hit real provider networks (never in the default suite)",
     "render: opt-in tests that execute ffmpeg to render video (never in the default suite)",
     "live_tts: opt-in tests that hit live TTS synthesis APIs (never in the default suite)",
+    "live_llm: opt-in tests that hit real LLM or search APIs (never in the default suite)",
 ]
-addopts = "-m 'not live_media and not render and not live_tts'"
+addopts = "-m 'not live_media and not render and not live_tts and not live_llm'"

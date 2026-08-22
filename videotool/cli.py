@@ -15,6 +15,9 @@ from videotool.pipeline.runner import EpisodeInput, PipelineRunner
 from videotool.providers.audio import AUDIO_PROVIDERS
 from videotool.providers.timing import TIMING_PROVIDERS, build_timing_provider
 
+from videotool.providers.fact_verification import FACT_VERIFICATION_PROVIDERS
+from videotool.providers.narration_writer import NARRATION_WRITER_PROVIDERS
+
 FIXTURES = {}
 
 
@@ -29,6 +32,23 @@ _register()
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="videotool")
     subparsers = parser.add_subparsers(dest="command")
+
+    # Subcommand: write-narration (Phase 4 AI Scriptwriter + Fact Verification)
+    write_parser = subparsers.add_parser("write-narration", help="generate documentary narration script and verify facts")
+    write_parser.add_argument("topic", help="documentary topic or title")
+    write_parser.add_argument("--duration", type=float, default=60.0, help="target duration in seconds (default: 60.0)")
+    write_parser.add_argument("--language", default="en", choices=["en", "vi"], help="script language (default: en)")
+    write_parser.add_argument("--mode", default="draft", choices=["draft", "final"], help="pipeline mode (default: draft)")
+    write_parser.add_argument("--writer-provider", default="gemini", choices=sorted(NARRATION_WRITER_PROVIDERS),
+                              help="narration writer provider (default: gemini)")
+    write_parser.add_argument("--verifier-provider", default="gemini", choices=sorted(FACT_VERIFICATION_PROVIDERS),
+                              help="fact verification provider (default: gemini)")
+    write_parser.add_argument("--allow-uncertain-claims", action="store_true",
+                              help="allow UNCERTAIN claims in final mode")
+    write_parser.add_argument("--out", default="artifacts/ai_narration/narration.json",
+                              help="output path for generated narration.json")
+    write_parser.add_argument("--report-out", default="artifacts/ai_narration/fact_verification_report.json",
+                              help="output path for fact_verification_report.json")
 
     # Subcommand: render
     render_parser = subparsers.add_parser("render", help="render episode to mp4 video")
@@ -63,10 +83,46 @@ def main(argv: list[str] | None = None) -> int:
                             help="recompute every stage, ignoring cached artifacts")
 
     args_list = list(sys.argv[1:] if argv is None else argv)
-    if args_list and args_list[0] not in ("render", "run", "-h", "--help"):
+    if args_list and args_list[0] not in ("render", "run", "write-narration", "-h", "--help"):
         args_list.insert(0, "run")
 
     args = parser.parse_args(args_list)
+
+    if args.command == "write-narration":
+        from videotool.pipeline.narration_intake import NarrationIntakeService
+        try:
+            service = NarrationIntakeService(
+                writer_provider_name=args.writer_provider,
+                verifier_provider_name=args.verifier_provider,
+                mode=args.mode,
+                allow_uncertain_claims=args.allow_uncertain_claims,
+            )
+            narration, report = service.process(
+                topic=args.topic,
+                target_duration_sec=args.duration,
+                language=args.language,
+                out_narration_path=args.out,
+                out_report_path=args.report_out,
+            )
+            print(f"Topic: {report.topic}")
+            print(f"Narration generated: {len(narration.text.split())} words (~{args.duration:.1f}s target)")
+            print(f"Factual claims extracted: {report.total_claims}")
+            print(f"  - Verified:    {report.verified_count}")
+            print(f"  - Uncertain:   {report.uncertain_count}")
+            print(f"  - Contradicted:{report.contradicted_count}")
+            gate_status = "PASSED" if report.passed_gate else "FAILED"
+            print(f"Gate Status: {gate_status} ({args.mode} mode)")
+            for w in report.warnings:
+                print(f"  warn: {w}")
+            print("Artifacts written:")
+            print(f"  - Narration:           {args.out}")
+            print(f"  - Verification Report: {args.report_out}")
+            return 0
+        except Exception as exc:
+            import traceback
+            print(f"write-narration ERROR: {exc or repr(exc)}")
+            traceback.print_exc()
+            return 1
 
     if args.command == "render":
         data = FIXTURES[args.fixture]()

@@ -4,6 +4,7 @@ __pycache__/
 .pytest_cache/
 .env
 .env.*
+!.env.example
 
 # regenerable build outputs
 videotool-src.zip

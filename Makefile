@@ -1,4 +1,4 @@
-.PHONY: test test-render run render clean dist
+.PHONY: test test-render test-live-tts test-live-llm run render clean dist
 
 VENV := .venv
 PY := $(VENV)/bin/python
@@ -8,6 +8,12 @@ test:
 
 test-render:
 	$(PY) -m pytest tests/ -m render -v
+
+test-live-tts:
+	$(PY) -m pytest tests/ -m live_tts -v
+
+test-live-llm:
+	$(PY) -m pytest tests/ -m live_llm -v
 
 run:
 	$(PY) -m videotool.cli berlin_wall --artifacts artifacts
