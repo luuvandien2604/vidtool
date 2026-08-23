@@ -102,11 +102,11 @@ def generate_subtitles_ass(timeline_data: dict[str, Any],
         # Default style: High-legibility documentary subtitles (white text, subtle dark outline, soft shadow, bottom-center)
         f"Style: Default,DejaVu Sans,42,&H00FFFFFF,&H000000FF,&H00101010,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,{margin_l},{margin_r},{margin_v},1",
         # NodeLabel: For text-only nodes (badges/labels) centered inside their placement
-        "Style: NodeLabel,DejaVu Sans,34,&H00FFFFFF,&H000000FF,&H001A1A1A,&H80000000,-1,0,0,0,100,100,0,0,1,2,2,5,10,10,10,1",
-        # NodeQuote: For archival quotes / documents (italic, soft gold/white)
-        "Style: NodeQuote,DejaVu Sans,36,&H00E8E8E8,&H000000FF,&H001A1A1A,&H80000000,0,-1,0,0,100,100,0,0,1,2,2,5,10,10,10,1",
-        # NodeTimeline: For chronological timeline entries
-        "Style: NodeTimeline,DejaVu Sans,32,&H00D0D8E0,&H000000FF,&H001A1A1A,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,5,10,10,10,1",
+        "Style: NodeLabel,DejaVu Sans,26,&H00F9FAFB,&H000000FF,&H00141619,&H90000000,-1,0,0,0,100,100,0,0,1,2,1,5,10,10,10,1",
+        # NodeQuote: For archival quotes / documents (italic, crisp light text)
+        "Style: NodeQuote,DejaVu Sans,28,&H00F9FAFB,&H000000FF,&H00141619,&H90000000,0,-1,0,0,100,100,0,0,1,2,1,5,10,10,10,1",
+        # NodeTimeline: For chronological timeline entries (Vox Yellow in BGR)
+        "Style: NodeTimeline,DejaVu Sans,24,&H0000D1FF,&H000000FF,&H00141619,&H90000000,-1,0,0,0,100,100,0,0,1,2,1,5,10,10,10,1",
         "",
     ]
 

@@ -16,7 +16,7 @@ class StatBadgeItem:
     """Represents a standalone key fact, location badge, date callout, or metric."""
     label: str
     value: str
-    kind: str = "metric"  # "date", "location", "person", "metric"
+    kind: str = "metric"  # "location", "date", "person", "metric"
     center_x: float = 960.0
     center_y: float = 540.0
     width: float = 240.0
@@ -42,14 +42,12 @@ class StatBadgeWidget:
                 f'<rect x="{rx:.1f}" y="{ry:.1f}" width="20" height="18" rx="3" '
                 f'fill="none" stroke="{color}" stroke-width="2"/>'
             )
-            # Top header bar & rings
             icons.append(
                 f'<line x1="{rx:.1f}" y1="{ry + 5.0:.1f}" x2="{rx + 20.0:.1f}" y2="{ry + 5.0:.1f}" '
                 f'stroke="{color}" stroke-width="1.8"/>'
             )
             icons.append(f'<line x1="{cx - 5.0:.1f}" y1="{ry - 3.0:.1f}" x2="{cx - 5.0:.1f}" y2="{ry + 1.0:.1f}" stroke="{color}" stroke-width="2" stroke-linecap="round"/>')
             icons.append(f'<line x1="{cx + 5.0:.1f}" y1="{ry - 3.0:.1f}" x2="{cx + 5.0:.1f}" y2="{ry + 1.0:.1f}" stroke="{color}" stroke-width="2" stroke-linecap="round"/>')
-            # Calendar day dot
             icons.append(f'<circle cx="{cx:.1f}" cy="{cy + 3.0:.1f}" r="2" fill="{color}"/>')
 
         elif k in ("location", "place", "city", "country"):
@@ -94,14 +92,10 @@ class StatBadgeWidget:
         for item in items:
             cx = item.center_x
             cy = item.center_y
-            accent = item.accent_color or (
-                colors.ACCENT_YELLOW if item.kind.lower() in ("date", "year") else
-                colors.ACCENT_BLUE if item.kind.lower() in ("location", "place") else
-                colors.ACCENT_CORAL if item.kind.lower() in ("person", "entity") else
-                colors.ACCENT_MUSTARD
-            )
+            # Strict Color Rule: Blue for LOCATION, Yellow for all other facts/metrics
+            is_loc = item.kind.lower() in ("location", "place", "city", "country")
+            accent = colors.ACCENT_BLUE if is_loc else colors.ACCENT_YELLOW
 
-            # Measure card width based on text lengths
             val_len = len(item.value)
             lbl_len = len(item.label)
             calc_w = max(item.width, max(val_len * 14.0, lbl_len * 9.0) + 70.0)

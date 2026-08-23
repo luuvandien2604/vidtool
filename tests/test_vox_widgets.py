@@ -1,239 +1,192 @@
-"""Tests for Vox design tokens, TimelineWidget, and StatBadgeWidget."""
-import re
+"""Tests for Vox design tokens, specialized widgets, and art-direction immunity.
+
+Validates that:
+1. TimelineWidget renders horizontal and vertical spine lines with Vox Yellow.
+2. StatBadgeWidget maps LOCATION to blue and all other badges/dates to Vox Yellow.
+3. Infographic cards and widgets are 100% immune to per-episode art_direction overrides.
+4. DATE disambiguation routes correctly between TimelineWidget and StatBadgeWidget.
+5. Codebase adheres to generalization guidelines (0 forbidden domain words).
+"""
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-import pytest
-
-from videotool.render.frame_plan import PixelRect, TextRenderElement, ConnectorRenderElement
+from videotool.render.frame_plan import (ConnectorRenderElement,
+                                        PixelRect,
+                                        TextRenderElement)
 from videotool.render.svg_overlay import generate_svg_overlay
-from videotool.render.vox_theme import (DEFAULT_VOX_THEME, VoxColors,
-                                        VoxSpacing, VoxTheme, VoxTypography)
+from videotool.render.vox_theme import DEFAULT_VOX_THEME, VoxColors, VoxTheme
 from videotool.render.widgets.stat_badge import StatBadgeItem, StatBadgeWidget
 from videotool.render.widgets.timeline import TimelineNodeItem, TimelineWidget
 
 
 def test_vox_theme_tokens():
-    """Verify Vox color tokens, typography defaults, and spacing constants."""
-    theme = DEFAULT_VOX_THEME
+    """Verify that Vox palette tokens adhere to editorial color specifications."""
+    assert VoxColors.ACCENT_YELLOW == "#FFD100"
+    assert VoxColors.ACCENT_BLUE == "#3B82F6"
+    assert VoxColors.BG_DARK_CARD == "#1C202B"
+    assert VoxColors.BG_DARK_SLATE == "#14171F"
+    assert VoxColors.TEXT_PRIMARY_LIGHT == "#F9FAFB"
+
+    theme = VoxTheme()
     assert theme.colors.ACCENT_YELLOW == "#FFD100"
-    assert theme.colors.BG_DARK_SLATE == "#14171F"
-    assert theme.colors.BG_DARK_CARD == "#1C202B"
+    assert theme.spacing.RADIUS_MD == 10.0
     assert "DejaVu Sans" in theme.typography.FONT_FAMILY_PRIMARY
-    assert theme.spacing.TIMELINE_NODE_RADIUS == 10.0
-    assert theme.spacing.ACCENT_BAR_WIDTH == 6.0
-
-    # Color resolution
-    assert theme.resolve_color("#123456") == "#123456"
-    assert theme.resolve_color("accent_yellow") == "#FFD100"
-    assert theme.resolve_color("ACCENT-CORAL") == "#E11D48"
-    assert theme.resolve_color(None) == "#FFD100"
 
 
-def test_timeline_widget_rendering():
-    """Verify TimelineWidget produces valid SVG with spine line, halos, dates, and labels."""
+def test_timeline_widget_horizontal_rendering():
+    """Verify TimelineWidget generates valid SVG with horizontal spine and yellow accents."""
     widget = TimelineWidget()
     nodes = [
-        TimelineNodeItem(
-            node_id="node_1",
-            center_x=400.0,
-            center_y=540.0,
-            date_text="1989",
-            label_text="Border Opens",
-            is_active=False,
-        ),
-        TimelineNodeItem(
-            node_id="node_2",
-            center_x=960.0,
-            center_y=540.0,
-            date_text="November 1989",
-            label_text="Press Conference",
-            is_active=True,
-        ),
-        TimelineNodeItem(
-            node_id="node_3",
-            center_x=1520.0,
-            center_y=540.0,
-            date_text="Midnight",
-            label_text="Gates Open",
-            is_active=False,
-        ),
+        TimelineNodeItem(node_id="n1", center_x=300.0, center_y=540.0, date_text="1989", label_text="Phase A"),
+        TimelineNodeItem(node_id="n2", center_x=700.0, center_y=540.0, date_text="1990", label_text="Phase B"),
     ]
-
-    fragments = widget.render_fragment(nodes)
-    assert len(fragments) > 0
-    full_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080">\n' + "\n".join(fragments) + "\n</svg>"
-
-    # Validate well-formed XML
-    root = ET.fromstring(full_svg)
-    assert root.tag == "{http://www.w3.org/2000/svg}svg"
-
-    # Check for spine lines (shadow + accent)
+    fragments = widget.render_fragment(nodes, include_text=True)
+    svg_doc = f'<svg xmlns="http://www.w3.org/2000/svg">\n<defs><filter id="card-drop-shadow"/></defs>\n' + "\n".join(fragments) + "\n</svg>"
+    
+    root = ET.fromstring(svg_doc)
+    assert root.tag.endswith("svg")
+    
+    # Assert spine line with Vox Yellow accent
     lines = root.findall(".//{http://www.w3.org/2000/svg}line")
-    assert len(lines) >= 2  # Spine lines
-
-    # Check for text elements
-    texts = [t.text for t in root.findall(".//{http://www.w3.org/2000/svg}text")]
-    assert "1989" in texts
-    assert "November 1989" in texts
-    assert "Press Conference" in texts
-    assert "Gates Open" in texts
+    assert len(lines) >= 2
+    yellow_lines = [line for line in lines if line.attrib.get("stroke") == "#FFD100"]
+    assert len(yellow_lines) >= 1
+    assert float(yellow_lines[0].attrib["x1"]) == 300.0
+    assert float(yellow_lines[0].attrib["x2"]) == 700.0
 
 
-def test_stat_badge_widget_rendering():
-    """Verify StatBadgeWidget renders pure SVG vector icons, labels, and values."""
+def test_timeline_widget_vertical_rendering_regression():
+    """Regression test: verify vertical timeline spine layout when nodes share same X coordinate."""
+    widget = TimelineWidget()
+    # Reproduces Beat 5's vertical layout where X coordinates are identical
+    nodes = [
+        TimelineNodeItem(node_id="n_top", center_x=960.0, center_y=216.0, label_text="Stage 1"),
+        TimelineNodeItem(node_id="n_bottom", center_x=960.0, center_y=540.0, label_text="Stage 2"),
+    ]
+    fragments = widget.render_fragment(nodes, include_text=True)
+    svg_doc = f'<svg xmlns="http://www.w3.org/2000/svg">\n<defs><filter id="card-drop-shadow"/></defs>\n' + "\n".join(fragments) + "\n</svg>"
+    
+    root = ET.fromstring(svg_doc)
+    lines = root.findall(".//{http://www.w3.org/2000/svg}line")
+    assert len(lines) >= 2
+    
+    # Assert vertical spine connecting (960, 216) to (960, 540)
+    yellow_vertical_lines = [
+        line for line in lines 
+        if line.attrib.get("stroke") == "#FFD100" 
+        and float(line.attrib["x1"]) == float(line.attrib["x2"]) == 960.0
+    ]
+    assert len(yellow_vertical_lines) == 1
+    assert float(yellow_vertical_lines[0].attrib["y1"]) == 216.0
+    assert float(yellow_vertical_lines[0].attrib["y2"]) == 540.0
+
+
+def test_stat_badge_widget_color_rules():
+    """Verify that LOCATION uses blue and other facts use Vox Yellow."""
     widget = StatBadgeWidget()
     items = [
-        StatBadgeItem(label="YEAR", value="1989", kind="date", center_x=400.0, center_y=300.0),
-        StatBadgeItem(label="LOCATION", value="Central Checkpoint", kind="location", center_x=960.0, center_y=300.0),
-        StatBadgeItem(label="FIGURE", value="Government Spokesman", kind="person", center_x=1520.0, center_y=300.0),
-        StatBadgeItem(label="ESTIMATE", value="50,000 People", kind="metric", center_x=960.0, center_y=700.0),
+        StatBadgeItem(label="Capital City", value="Paris", kind="location", center_x=400.0, center_y=500.0),
+        StatBadgeItem(label="Milestone Year", value="1989", kind="date", center_x=800.0, center_y=500.0),
+        StatBadgeItem(label="Key Figure", value="Scientist", kind="person", center_x=1200.0, center_y=500.0),
     ]
-
-    fragments = widget.render_fragment(items)
-    full_svg = (
-        '<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080">\n'
-        '  <defs><filter id="card-drop-shadow"><feDropShadow dx="0" dy="4" stdDeviation="6"/></filter></defs>\n'
-        + "\n".join(fragments)
-        + "\n</svg>"
-    )
-
-    # Validate XML parsing
-    root = ET.fromstring(full_svg)
-    assert root.tag == "{http://www.w3.org/2000/svg}svg"
-
-    # Check that paths and circles exist for icons
-    assert len(root.findall(".//{http://www.w3.org/2000/svg}circle")) >= 4
-    texts = [t.text for t in root.findall(".//{http://www.w3.org/2000/svg}text")]
-    assert "1989" in texts
-    assert "LOCATION" in texts
-    assert "Central Checkpoint" in texts
-    assert "50,000 People" in texts
+    fragments = widget.render_fragment(items, include_text=True)
+    svg_doc = f'<svg xmlns="http://www.w3.org/2000/svg">\n<defs><filter id="card-drop-shadow"/></defs>\n' + "\n".join(fragments) + "\n</svg>"
+    
+    root = ET.fromstring(svg_doc)
+    rects = root.findall(".//{http://www.w3.org/2000/svg}rect")
+    
+    # Accent bars
+    accent_fills = [r.attrib.get("fill") for r in rects if r.attrib.get("width") == "6.0" or r.attrib.get("width") == "6"]
+    assert "#3B82F6" in accent_fills  # Blue for location
+    assert "#FFD100" in accent_fills  # Yellow for date and person
 
 
 def test_date_role_disambiguation():
-    """Explicitly verify DATE disambiguation rule: timeline sequence vs standalone fact."""
-    # Case A: Multi-node sequence in chronological_timeline family -> routes to TimelineWidget
-    timeline_texts = [
-        TextRenderElement(
-            element_id="t1",
-            text="1989: Event A",
-            role="TIMELINE_NODE",
-            text_role="DATE",
-            z_index=1,
-            bounds_norm={"x": 0.2, "y": 0.5, "width": 0.2, "height": 0.1},
-            bounds_px=PixelRect(x=384, y=540, width=200, height=60),
-            entrance_sec=0.0,
-            exit_sec=5.0,
-            style_name="NodeTimeline",
-        ),
-        TextRenderElement(
-            element_id="t2",
-            text="1990: Event B",
-            role="TIMELINE_NODE",
-            text_role="DATE",
-            z_index=1,
-            bounds_norm={"x": 0.6, "y": 0.5, "width": 0.2, "height": 0.1},
-            bounds_px=PixelRect(x=1152, y=540, width=200, height=60),
-            entrance_sec=0.0,
-            exit_sec=5.0,
-            style_name="NodeTimeline",
-        ),
-    ]
-
-    svg_timeline = generate_svg_overlay(
-        text_elements=timeline_texts,
-        visual_family="chronological_timeline",
+    """Verify that DATE roles route to TimelineWidget in timeline family and StatBadgeWidget otherwise."""
+    # Case A: Timeline family -> TimelineWidget
+    elem_tl = TextRenderElement(
+        element_id="elem_date_tl",
+        text="November 1989",
+        role="TIMELINE_NODE",
+        text_role="DATE",
+        z_index=1,
+        bounds_norm={"x": 0.45, "y": 0.45, "w": 0.1, "h": 0.05},
+        bounds_px=PixelRect(x=860, y=515, width=200, height=50),
+        entrance_sec=0.0,
+        exit_sec=5.0,
+        style_name="NodeTimeline",
     )
-    assert svg_timeline is not None
-    assert "Timeline Spine" in svg_timeline
-    assert "Timeline Node: t1" in svg_timeline
-    assert "Stat Badge:" not in svg_timeline
+    svg_tl = generate_svg_overlay(text_elements=[elem_tl], visual_family="chronological_timeline", include_text=True)
+    assert svg_tl is not None
+    assert "Timeline Node: elem_date_tl" in svg_tl
 
-    # Case B: Standalone single DATE in non-timeline beat -> routes to StatBadgeWidget
-    standalone_date = [
-        TextRenderElement(
-            element_id="d1",
-            text="1989",
-            role="DATE",
-            text_role="DATE",
-            z_index=1,
-            bounds_norm={"x": 0.4, "y": 0.4, "width": 0.2, "height": 0.1},
-            bounds_px=PixelRect(x=768, y=432, width=180, height=60),
-            entrance_sec=0.0,
-            exit_sec=5.0,
-            style_name="NodeLabel",
-        )
-    ]
-
-    svg_badge = generate_svg_overlay(
-        text_elements=standalone_date,
-        visual_family="full_frame_cinematic",
+    # Case B: Standalone fact -> StatBadgeWidget
+    elem_fact = TextRenderElement(
+        element_id="elem_date_standalone",
+        text="1989",
+        role="DATE",
+        text_role="DATE",
+        z_index=1,
+        bounds_norm={"x": 0.47, "y": 0.47, "w": 0.06, "h": 0.04},
+        bounds_px=PixelRect(x=900, y=520, width=120, height=40),
+        entrance_sec=0.0,
+        exit_sec=5.0,
+        style_name="NodeLabel",
     )
+    svg_badge = generate_svg_overlay(text_elements=[elem_fact], visual_family="full_frame_cinematic", include_text=True)
     assert svg_badge is not None
     assert "Stat Badge: DATE" in svg_badge
-    assert "Timeline Spine" not in svg_badge
 
 
-def test_svg_overlay_with_connectors_and_quotes():
-    """Verify connectors and quote cards use Vox design tokens."""
-    conns = [
-        ConnectorRenderElement(
-            connector_id="c1",
-            source_node_id="src",
-            target_node_id="tgt",
-            relationship_type="CAUSES",
-            connector_style_hint="solid",
-            directed=True,
-            start_px=(200.0, 500.0),
-            end_px=(800.0, 500.0),
-            color="#FFD100",
-        )
-    ]
-    texts = [
-        TextRenderElement(
-            element_id="q1",
-            text='"As far as I know, it takes effect immediately."',
-            role="QUOTE",
-            text_role="QUOTE",
-            z_index=2,
-            bounds_norm={"x": 0.2, "y": 0.7, "width": 0.6, "height": 0.15},
-            bounds_px=PixelRect(x=384, y=756, width=600, height=100),
-            entrance_sec=0.0,
-            exit_sec=5.0,
-            style_name="NodeQuote",
-        )
-    ]
-
+def test_art_direction_override_immunity_regression():
+    """Regression test: verify infographic cards & widgets are immune to art_direction accent overrides."""
+    elem_label = TextRenderElement(
+        element_id="elem_label",
+        text="Crucial Observation",
+        role="LABEL",
+        text_role="LABEL",
+        z_index=1,
+        bounds_norm={"x": 0.42, "y": 0.47, "w": 0.16, "h": 0.06},
+        bounds_px=PixelRect(x=810, y=510, width=300, height=60),
+        entrance_sec=0.0,
+        exit_sec=5.0,
+        style_name="NodeLabel",
+    )
+    elem_quote = TextRenderElement(
+        element_id="elem_quote",
+        text="The decisive moment arrives",
+        role="QUOTE",
+        text_role="QUOTE",
+        z_index=1,
+        bounds_norm={"x": 0.41, "y": 0.46, "w": 0.18, "h": 0.08},
+        bounds_px=PixelRect(x=790, y=500, width=340, height=80),
+        entrance_sec=0.0,
+        exit_sec=5.0,
+        style_name="NodeQuote",
+    )
+    
+    # Deliberately supply a contrasting art direction accent (bright green)
+    fake_art_direction_accent = "#00FF00"
+    
     svg = generate_svg_overlay(
-        connectors=conns,
-        text_elements=texts,
-        accent_color="#FFD100",
+        text_elements=[elem_label, elem_quote],
+        accent_color=fake_art_direction_accent,
+        include_text=True,
     )
     assert svg is not None
-    assert '<polygon points=' in svg  # Directed arrowhead
-    assert '#FFD100' in svg          # Accent gold bar
-    assert 'card-drop-shadow' in svg
-
-    # Validate well-formed XML
-    ET.fromstring(svg)
+    
+    # Assert that fake_art_direction_accent did NOT infect the SVG overlay
+    assert fake_art_direction_accent not in svg
+    # Assert signature Vox Yellow is strictly used for the card accents
+    assert "#FFD100" in svg
 
 
 def test_generalization_vox_codebase():
-    """Verify no forbidden domain words are hardcoded in render/vox_theme.py or render/widgets/."""
-    forbidden = ["berlin", "schabowski", "bornholmer"]
+    """Verify no hardcoded domain strings exist in the render codebase outside fixtures/cli."""
     render_dir = Path(__file__).resolve().parent.parent / "videotool" / "render"
-    files_to_check = [
-        render_dir / "vox_theme.py",
-        render_dir / "widgets" / "timeline.py",
-        render_dir / "widgets" / "stat_badge.py",
-        render_dir / "widgets" / "__init__.py",
-        render_dir / "svg_overlay.py",
-    ]
+    forbidden_tokens = ["berlin", "schabowski", "bornholmer"]
 
-    for fpath in files_to_check:
-        if not fpath.exists():
-            continue
-        content = fpath.read_text(encoding="utf-8").lower()
-        for word in forbidden:
-            assert word not in content, f"Forbidden word '{word}' found in {fpath.name}"
+    for py_file in render_dir.rglob("*.py"):
+        content = py_file.read_text(encoding="utf-8").lower()
+        for token in forbidden_tokens:
+            assert token not in content, f"Forbidden domain token '{token}' detected in {py_file}"

@@ -39,7 +39,13 @@ def generate_svg_overlay(connectors: list[ConnectorRenderElement] | None = None,
                          visual_family: str | None = None,
                          theme: VoxTheme | None = None,
                          include_text: bool = False) -> str | None:
-    """Generate an SVG vector overlay for a beat's connectors, timeline, and node cards."""
+    """Generate an SVG vector overlay for a beat's connectors, timeline, and node cards.
+
+    Strict Architectural Rule:
+    Vox infographic elements (card borders, timeline spines, date pills, metric icons)
+    exclusively use Vox design tokens (ACCENT_YELLOW for cards/milestones, ACCENT_BLUE
+    for location badges) and are immune to per-episode art_direction overrides.
+    """
     conns = connectors or []
     texts = text_elements or []
 
@@ -50,7 +56,6 @@ def generate_svg_overlay(connectors: list[ConnectorRenderElement] | None = None,
     colors = active_theme.colors
     spacing = active_theme.spacing
     typo = active_theme.typography
-    resolved_accent = active_theme.resolve_color(accent_color, default=colors.ACCENT_YELLOW)
 
     elements: list[str] = []
 
@@ -76,7 +81,8 @@ def generate_svg_overlay(connectors: list[ConnectorRenderElement] | None = None,
             continue
 
         angle = math.atan2(dy, dx)
-        stroke_color = active_theme.resolve_color(conn.color, default=resolved_accent)
+        # Connectors default to signature Vox Yellow
+        stroke_color = colors.ACCENT_YELLOW
         stroke_width = max(spacing.STROKE_STANDARD, conn.stroke_width)
 
         # Dash styling for routes vs solid causal/temporal links
@@ -146,10 +152,10 @@ def generate_svg_overlay(connectors: list[ConnectorRenderElement] | None = None,
                 center_y=float(elem.bounds_px.center_y),
                 date_text=d_text or (elem.text if elem.text_role == "DATE" else ""),
                 label_text=l_text or (elem.text if elem.text_role != "DATE" else ""),
-                accent_color=resolved_accent,
+                accent_color=colors.ACCENT_YELLOW,
             ))
         elif elem.text_role == "DATE" or (elem.role == "DATE" and not is_timeline_beat):
-            # Standalone date fact
+            # Standalone date fact -> StatBadgeWidget with ACCENT_YELLOW
             stat_items.append(StatBadgeItem(
                 label="DATE",
                 value=elem.text,
@@ -158,15 +164,25 @@ def generate_svg_overlay(connectors: list[ConnectorRenderElement] | None = None,
                 center_y=float(elem.bounds_px.center_y),
                 accent_color=colors.ACCENT_YELLOW,
             ))
-        elif elem.text_role in ("LOCATION", "PLACE") or elem.role == "LOCATION" or (elem.bounds_px.width < 220 and len(elem.text) <= 15 and elem.style_name != "NodeQuote"):
-            # Location badge or short entity fact
+        elif elem.text_role in ("LOCATION", "PLACE") or elem.role == "LOCATION":
+            # Location badge -> StatBadgeWidget with ACCENT_BLUE
             stat_items.append(StatBadgeItem(
-                label="LOCATION" if elem.text_role in ("LOCATION", "PLACE") or elem.role == "LOCATION" else "ENTITY",
+                label="LOCATION",
                 value=elem.text,
-                kind="location" if elem.text_role in ("LOCATION", "PLACE") or elem.role == "LOCATION" else "entity",
+                kind="location",
                 center_x=float(elem.bounds_px.center_x),
                 center_y=float(elem.bounds_px.center_y),
                 accent_color=colors.ACCENT_BLUE,
+            ))
+        elif elem.bounds_px.width < 220 and len(elem.text) <= 15 and elem.style_name != "NodeQuote":
+            # Short entity / metric fact
+            stat_items.append(StatBadgeItem(
+                label="ENTITY",
+                value=elem.text,
+                kind="entity",
+                center_x=float(elem.bounds_px.center_x),
+                center_y=float(elem.bounds_px.center_y),
+                accent_color=colors.ACCENT_YELLOW,
             ))
         else:
             standard_cards.append(elem)
@@ -188,7 +204,7 @@ def generate_svg_overlay(connectors: list[ConnectorRenderElement] | None = None,
         h = elem.bounds_px.height
 
         if elem.style_name == "NodeQuote":
-            # Elegant Vox quote card with left yellow accent bar
+            # Elegant Vox quote card with signature yellow border and left bar
             bw = max(340.0, float(w) + 48.0)
             bh = max(84.0, float(h) + 28.0)
             bx = cx - bw / 2.0
@@ -207,7 +223,7 @@ def generate_svg_overlay(connectors: list[ConnectorRenderElement] | None = None,
             elements.append('  </g>')
 
         else:
-            # Diagram / Concept / Entity Card with Vox Dark Card styling
+            # Diagram / Concept / Entity Card with signature Vox Yellow left bar
             bw = max(260.0, float(w) + 36.0)
             bh = max(68.0, float(h) + 16.0)
             bx = cx - bw / 2.0
@@ -219,10 +235,10 @@ def generate_svg_overlay(connectors: list[ConnectorRenderElement] | None = None,
                 f'rx="{spacing.RADIUS_MD:.1f}" ry="{spacing.RADIUS_MD:.1f}" '
                 f'fill="{colors.BG_DARK_CARD}" fill-opacity="0.92" stroke="{colors.BORDER_DARK}" stroke-width="1.5"/>'
             )
-            # Left accent highlight bar
+            # Left accent highlight bar strictly in signature Vox Yellow
             elements.append(
                 f'    <rect x="{bx:.1f}" y="{by + 6.0:.1f}" width="{spacing.ACCENT_BAR_WIDTH:.1f}" '
-                f'height="{bh - 12.0:.1f}" rx="3" fill="{resolved_accent}"/>'
+                f'height="{bh - 12.0:.1f}" rx="3" fill="{colors.ACCENT_YELLOW}"/>'
             )
             elements.append('  </g>')
 

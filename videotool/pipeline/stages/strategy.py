@@ -87,6 +87,7 @@ class VisualStrategyPlanStage(BasePipelineStage):
 
     def fingerprint(self, ctx: PipelineContext) -> str:
         planner_cfg = asdict(ctx.planner_config)
+        overrides = ctx.store.load(ctx.episode_id, "editorial_overrides") or []
         return stable_hash(
             self.version,
             ctx.episode_id,
@@ -94,10 +95,12 @@ class VisualStrategyPlanStage(BasePipelineStage):
             planner_cfg,
             ctx.policy.editorial_ai_enabled,
             ctx.policy.editorial_ai_provider if ctx.policy.editorial_ai_enabled else "disabled",
+            overrides,
         )
 
     def execute(self, ctx: PipelineContext) -> list[dict]:
         intents: dict[str, Any] = {}
+        overrides = ctx.store.load(ctx.episode_id, "editorial_overrides") or []
         if ctx.policy.editorial_ai_enabled:
             from videotool.editorial.director import (
                 EDITORIAL_DIRECTOR_PROMPT_VERSION,
@@ -154,6 +157,26 @@ class VisualStrategyPlanStage(BasePipelineStage):
             records = ctx.planner.select(ctx.state["beats"], VisualHistory(), intents=intents)
         else:
             records = ctx.planner.select(ctx.state["beats"], VisualHistory())
+
+        # Apply any manual strategy overrides
+        if overrides:
+            strat_by_beat = {ovr["beat_id"]: ovr["new_value"] for ovr in overrides if ovr.get("field") == "strategy" and ovr.get("new_value") in STRATEGY_CATALOG}
+            updated_records = []
+            for r in records:
+                if r.beat_id in strat_by_beat:
+                    new_strat = strat_by_beat[r.beat_id]
+                    updated_records.append(SelectionRecord(
+                        beat_id=r.beat_id,
+                        semantic_function=r.semantic_function,
+                        selected_strategy=new_strat,
+                        visual_family=STRATEGY_CATALOG[new_strat].visual_family,
+                        reason=f"human editorial override: {new_strat}",
+                        is_fallback=False,
+                    ))
+                else:
+                    updated_records.append(r)
+            records = updated_records
+
         records = _repair_strategy_records(records, ctx.state["beats"], ctx)
         return [r.to_dict() for r in records]
 

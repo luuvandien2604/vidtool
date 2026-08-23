@@ -47,6 +47,36 @@ class MockEditorialDirectorProvider:
             if d.strategy_id in preferred_strategies
         })
 
+        # Generate deterministic, grounded mock captions for entities / nodes
+        mock_captions: dict[str, str] = {}
+        for ent in request.entities:
+            ent_clean = ent.strip()
+            if not ent_clean:
+                continue
+            # Generic grounded heuristic: if key descriptor words appear in narration, attach them
+            if "official" in request.narration_text.lower() and ent_clean == request.entities[0]:
+                mock_captions[ent_clean] = f"Official {ent_clean}"
+            elif "divided" in request.narration_text.lower() and ent_clean == request.entities[0]:
+                mock_captions[ent_clean] = f"{ent_clean}: Divided City"
+            elif "border" in request.narration_text.lower() and ent_clean in request.locations:
+                mock_captions[ent_clean] = f"{ent_clean} border"
+            elif "spread" in request.narration_text.lower() and "protest" in ent_clean.lower():
+                mock_captions[ent_clean] = "Protests spread"
+            elif "regulation" in request.narration_text.lower() and "document" in ent_clean.lower():
+                mock_captions[ent_clean] = "Regulation document"
+            elif "travel" in request.narration_text.lower() and "regulation" in ent_clean.lower():
+                mock_captions[ent_clean] = "Travel regulation"
+            else:
+                mock_captions[ent_clean] = ent_clean
+
+        for loc in request.locations:
+            loc_clean = loc.strip()
+            if loc_clean and loc_clean not in mock_captions:
+                if "border" in request.narration_text.lower():
+                    mock_captions[loc_clean] = f"{loc_clean} border"
+                else:
+                    mock_captions[loc_clean] = loc_clean
+
         return EditorialIntent(
             beat_id=request.beat_id,
             story_role=request.semantic_function,
@@ -62,5 +92,6 @@ class MockEditorialDirectorProvider:
             emphasis=request.entities[0] if request.entities else "",
             reason=f"Mock director prioritized {', '.join(preferred_strategies[:2])} for {request.semantic_function}.",
             confidence=0.90,
+            captions=mock_captions,
             is_fallback=False,
         )

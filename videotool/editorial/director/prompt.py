@@ -19,8 +19,9 @@ def build_system_prompt() -> str:
         "1. PROPOSE ONLY from the supplied candidate strategies and visual families. NEVER invent new strategy IDs.\n"
         "2. DO NOT provide pixel coordinates, screen layouts, ASS subtitles, or FFmpeg commands.\n"
         "3. Consider visual variety and avoid visual families that were recently used or are at their streak limit.\n"
-        "4. Output MUST be a single valid JSON object strictly conforming to the requested schema.\n"
-        "5. Keep reasoning professional, concise, and focused on narrative pacing."
+        "4. For any text labels or badges (captions), propose concise, natural phrases (2-6 words) STRICTLY grounded in the beat narration/entities.\n"
+        "5. Output MUST be a single valid JSON object strictly conforming to the requested schema.\n"
+        "6. Keep reasoning professional, concise, and focused on narrative pacing."
     )
 
 
@@ -57,6 +58,7 @@ def build_beat_prompt(req: EditorialDirectorRequest) -> str:
         },
         "valid_candidate_strategies": strategies_info,
         "available_visual_families": req.available_families,
+        "text_nodes": req.text_nodes,
     }
 
     return (
@@ -76,6 +78,9 @@ def build_beat_prompt(req: EditorialDirectorRequest) -> str:
         '  "must_not_show": ["<cliché or distracting element>"],\n'
         '  "emphasis": "<key narrative focus>",\n'
         '  "reason": "<editorial justification for chosen strategies>",\n'
-        '  "confidence": 0.95\n'
+        '  "confidence": 0.95,\n'
+        '  "captions": {\n'
+        '    "<entity_or_node_id>": "<grounded short phrase 2-6 words>"\n'
+        '  }\n'
         "}\n"
     )

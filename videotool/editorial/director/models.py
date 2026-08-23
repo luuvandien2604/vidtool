@@ -54,6 +54,7 @@ class EditorialIntent:
     emphasis: str = ""
     reason: str = ""
     confidence: float = 1.0  # 0.0 .. 1.0
+    captions: dict[str, str] = field(default_factory=dict)
     schema_version: int = 1
     is_fallback: bool = False
 
@@ -74,6 +75,7 @@ class EditorialIntent:
             "emphasis": self.emphasis,
             "reason": self.reason,
             "confidence": round(float(self.confidence), 3),
+            "captions": dict(self.captions),
             "is_fallback": self.is_fallback,
         }
 
@@ -94,6 +96,7 @@ class EditorialIntent:
             emphasis=d.get("emphasis", ""),
             reason=d.get("reason", ""),
             confidence=float(d.get("confidence", 1.0)),
+            captions=dict(d.get("captions", {})),
             schema_version=int(d.get("schema_version", 1)),
             is_fallback=bool(d.get("is_fallback", False)),
         )
@@ -116,6 +119,7 @@ class EditorialDirectorRequest:
     family_streak: tuple[str, int]
     candidate_descriptors: list[StrategyDescriptor]
     available_families: list[str]
+    text_nodes: list[dict[str, Any]] = field(default_factory=list)
 
     def fingerprint(self) -> str:
         """Deterministic fingerprint of the request context."""
@@ -135,6 +139,7 @@ class EditorialDirectorRequest:
             self.family_streak,
             descriptors_payload,
             self.available_families,
+            self.text_nodes,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -153,6 +158,7 @@ class EditorialDirectorRequest:
             "family_streak": list(self.family_streak),
             "candidate_descriptors": [d.to_dict() for d in self.candidate_descriptors],
             "available_families": list(self.available_families),
+            "text_nodes": list(self.text_nodes),
         }
 
 

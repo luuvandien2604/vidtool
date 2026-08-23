@@ -55,6 +55,8 @@ def render_episode(episode_id: str, store: ArtifactStore, output_path: str | Pat
     visual_compositions = store.load(episode_id, "visual_compositions") or []
     art_direction = store.load(episode_id, "episode_art_direction") or {}
     semantic_beats = store.load(episode_id, "semantic_beats") or []
+    editorial_intents = store.load(episode_id, "editorial_intents") or {}
+    editorial_overrides = store.load(episode_id, "editorial_overrides") or []
 
     # Build pure-Python frame plan
     plan = build_episode_frame_plan(
@@ -65,6 +67,8 @@ def render_episode(episode_id: str, store: ArtifactStore, output_path: str | Pat
         visual_compositions=visual_compositions,
         art_direction=art_direction,
         semantic_beats=semantic_beats,
+        editorial_intents=editorial_intents,
+        editorial_overrides=editorial_overrides,
     )
 
     # Audio synthesis handling

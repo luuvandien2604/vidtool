@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from videotool.editorial.director.caption_validator import validate_caption
 from videotool.editorial.director.fallback import build_fallback_intent
 from videotool.editorial.director.models import (
     EditorialDirectorRequest,
@@ -57,10 +58,32 @@ class EditorialDirector:
             )
             return fallback_intent, val_res
 
-        # 2. Strict validation against deterministic domain rules
+        # 2. Validate proposed captions against anti-hallucination grounding rules
+        validated_captions: dict[str, str] = {}
+        for key, cap in getattr(raw_intent, "captions", {}).items():
+            is_valid, cap_reason = validate_caption(
+                caption=cap,
+                narration_text=request.narration_text,
+                entities=request.entities,
+                locations=request.locations,
+                dates=request.dates,
+            )
+            if is_valid:
+                validated_captions[key] = cap
+            else:
+                logger.info(
+                    "Rejected ungrounded caption '%s' for key '%s' on beat '%s': %s",
+                    cap,
+                    key,
+                    request.beat_id,
+                    cap_reason,
+                )
+        raw_intent.captions = validated_captions
+
+        # 3. Strict validation against deterministic domain rules
         val_res = validate_editorial_intent(raw_intent, request, catalog, families)
 
-        # 3. If proposal is valid (has at least 1 viable candidate), return it
+        # 4. If proposal is valid (has at least 1 viable candidate), return it
         if val_res.is_valid:
             # Prune any rejected strategies from intent candidate list
             raw_intent.candidate_strategies = val_res.accepted_strategies

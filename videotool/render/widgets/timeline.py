@@ -1,6 +1,6 @@
 """Timeline widget generator for chronological milestones and historical sequences.
 
-Renders horizontal/connected timeline spines, milestone nodes, date pills,
+Renders horizontal or vertical timeline spines, milestone nodes, date pills,
 and event summary cards using Vox editorial design tokens.
 """
 from __future__ import annotations
@@ -25,7 +25,7 @@ class TimelineNodeItem:
 
 
 class TimelineWidget:
-    """Renders Vox-style horizontal chronological timelines."""
+    """Renders Vox-style chronological timelines (horizontal or vertical)."""
 
     def __init__(self, theme: VoxTheme | None = None):
         self.theme = theme or DEFAULT_VOX_THEME
@@ -39,101 +39,124 @@ class TimelineWidget:
         colors = self.theme.colors
         spacing = self.theme.spacing
         typo = self.theme.typography
+        # Timeline always uses Vox Yellow as its primary signature accent
+        accent = colors.ACCENT_YELLOW
 
-        # Sort nodes by X coordinate to establish left-to-right temporal progression
-        sorted_nodes = sorted(nodes, key=lambda n: n.center_x)
+        # Determine orientation: horizontal vs vertical
+        xs = [n.center_x for n in nodes]
+        ys = [n.center_y for n in nodes]
+        dx = max(xs) - min(xs)
+        dy = max(ys) - min(ys)
+        is_vertical = dy > dx and dy > 10.0
+
+        if is_vertical:
+            sorted_nodes = sorted(nodes, key=lambda n: n.center_y)
+        else:
+            sorted_nodes = sorted(nodes, key=lambda n: n.center_x)
 
         # 1. Render Connecting Spine Line
         if len(sorted_nodes) >= 2:
-            x_start = sorted_nodes[0].center_x
-            x_end = sorted_nodes[-1].center_x
-            y_spine = sum(n.center_y for n in sorted_nodes) / len(sorted_nodes)
-
-            # Dark outline for high-contrast visibility against video backgrounds
             elements.append('  <!-- Timeline Spine -->')
-            elements.append(
-                f'  <line x1="{x_start:.1f}" y1="{y_spine:.1f}" x2="{x_end:.1f}" y2="{y_spine:.1f}" '
-                f'stroke="{colors.SHADOW_COLOR}" stroke-opacity="0.7" stroke-width="{spacing.STROKE_OUTLINE:.1f}" '
-                f'stroke-linecap="round"/>'
-            )
-            elements.append(
-                f'  <line x1="{x_start:.1f}" y1="{y_spine:.1f}" x2="{x_end:.1f}" y2="{y_spine:.1f}" '
-                f'stroke="{colors.ACCENT_YELLOW}" stroke-width="{spacing.STROKE_STANDARD:.1f}" '
-                f'stroke-linecap="round"/>'
-            )
+            if is_vertical:
+                x_spine = sum(xs) / len(xs)
+                y_start = min(ys)
+                y_end = max(ys)
+                # Dark outline for high-contrast visibility against video backgrounds
+                elements.append(
+                    f'  <line x1="{x_spine:.1f}" y1="{y_start:.1f}" x2="{x_spine:.1f}" y2="{y_end:.1f}" '
+                    f'stroke="{colors.SHADOW_COLOR}" stroke-opacity="0.7" stroke-width="{spacing.STROKE_OUTLINE:.1f}" '
+                    f'stroke-linecap="round"/>'
+                )
+                elements.append(
+                    f'  <line x1="{x_spine:.1f}" y1="{y_start:.1f}" x2="{x_spine:.1f}" y2="{y_end:.1f}" '
+                    f'stroke="{accent}" stroke-width="{spacing.STROKE_STANDARD:.1f}" '
+                    f'stroke-linecap="round"/>'
+                )
+            else:
+                x_start = min(xs)
+                x_end = max(xs)
+                y_spine = sum(ys) / len(ys)
+                elements.append(
+                    f'  <line x1="{x_start:.1f}" y1="{y_spine:.1f}" x2="{x_end:.1f}" y2="{y_spine:.1f}" '
+                    f'stroke="{colors.SHADOW_COLOR}" stroke-opacity="0.7" stroke-width="{spacing.STROKE_OUTLINE:.1f}" '
+                    f'stroke-linecap="round"/>'
+                )
+                elements.append(
+                    f'  <line x1="{x_start:.1f}" y1="{y_spine:.1f}" x2="{x_end:.1f}" y2="{y_spine:.1f}" '
+                    f'stroke="{accent}" stroke-width="{spacing.STROKE_STANDARD:.1f}" '
+                    f'stroke-linecap="round"/>'
+                )
 
         # 2. Render Milestone Nodes, Date Badges, and Event Cards
         for node in sorted_nodes:
             nx = node.center_x
             ny = node.center_y
-            node_accent = node.accent_color or (colors.ACCENT_YELLOW if node.is_active else colors.ACCENT_BLUE)
 
             elements.append(f'  <!-- Timeline Node: {html.escape(node.node_id)} -->')
 
             # Outer Halo
             elements.append(
                 f'  <circle cx="{nx:.1f}" cy="{ny:.1f}" r="{spacing.TIMELINE_HALO_RADIUS:.1f}" '
-                f'fill="{node_accent}" fill-opacity="0.25" stroke="{node_accent}" stroke-width="1.5"/>'
+                f'fill="{accent}" fill-opacity="0.25" stroke="{accent}" stroke-width="1.5"/>'
             )
 
             # Inner Core Circle
-            core_fill = colors.ACCENT_YELLOW if node.is_active else colors.TEXT_PRIMARY_LIGHT
             elements.append(
                 f'  <circle cx="{nx:.1f}" cy="{ny:.1f}" r="{spacing.TIMELINE_NODE_RADIUS:.1f}" '
-                f'fill="{core_fill}" stroke="{colors.SHADOW_COLOR}" stroke-opacity="0.6" stroke-width="2"/>'
+                f'fill="{accent}" stroke="{colors.SHADOW_COLOR}" stroke-opacity="0.6" stroke-width="2"/>'
             )
 
             # Center Dot
             elements.append(
-                f'  <circle cx="{nx:.1f}" cy="{ny:.1f}" r="4" fill="{node_accent}"/>'
+                f'  <circle cx="{nx:.1f}" cy="{ny:.1f}" r="4" fill="{colors.BG_DARK_CARD}"/>'
             )
 
-            # Date Badge (Rendered above node if date_text exists)
-            if node.date_text:
+            # Date Badge (Rendered above node if date_text exists and distinct from label)
+            if node.date_text and node.date_text != node.label_text:
                 clean_date = html.escape(node.date_text.strip())
                 pill_w = max(90.0, len(clean_date) * 11.0 + 24.0)
                 pill_h = 30.0
                 pill_x = nx - (pill_w / 2.0)
-                pill_y = ny - 50.0
+                pill_y = ny - 45.0
 
                 elements.append('  <g filter="url(#card-drop-shadow)">')
                 elements.append(
                     f'    <rect x="{pill_x:.1f}" y="{pill_y:.1f}" width="{pill_w:.1f}" height="{pill_h:.1f}" '
                     f'rx="{pill_h/2.0:.1f}" ry="{pill_h/2.0:.1f}" '
-                    f'fill="{colors.BG_DARK_CARD}" fill-opacity="0.95" stroke="{node_accent}" stroke-width="1.8"/>'
+                    f'fill="{colors.BG_DARK_CARD}" fill-opacity="0.95" stroke="{accent}" stroke-width="1.8"/>'
                 )
                 if include_text:
                     elements.append(
                         f'    <text x="{nx:.1f}" y="{pill_y + 20.0:.1f}" '
                         f'font-family="{typo.FONT_FAMILY_PRIMARY}" font-size="{typo.SIZE_BADGE}" '
-                        f'font-weight="{typo.WEIGHT_BOLD}" fill="{node_accent}" text-anchor="middle">{clean_date}</text>'
+                        f'font-weight="{typo.WEIGHT_BOLD}" fill="{accent}" text-anchor="middle">{clean_date}</text>'
                     )
                 elements.append('  </g>')
 
-            # Event Label Card (Rendered below node if label_text exists)
+            # Event Label Card Container (Centered on (nx, ny) or offset if milestone circle is distinct)
             if node.label_text:
                 clean_label = html.escape(node.label_text.strip())
-                card_w = max(180.0, len(clean_label) * 9.5 + 32.0)
-                card_h = 52.0
+                card_w = max(180.0, len(clean_label) * 10.0 + 40.0)
+                card_h = 56.0
                 card_x = nx - (card_w / 2.0)
-                card_y = ny + 24.0
+                card_y = ny - (card_h / 2.0)
 
                 elements.append('  <g filter="url(#card-drop-shadow)">')
                 elements.append(
                     f'    <rect x="{card_x:.1f}" y="{card_y:.1f}" width="{card_w:.1f}" height="{card_h:.1f}" '
                     f'rx="{spacing.RADIUS_MD:.1f}" ry="{spacing.RADIUS_MD:.1f}" '
-                    f'fill="{colors.BG_DARK_SLATE}" fill-opacity="0.92" stroke="{colors.BORDER_DARK}" stroke-width="1.5"/>'
+                    f'fill="{colors.BG_DARK_CARD}" fill-opacity="0.92" stroke="{colors.BORDER_DARK}" stroke-width="1.5"/>'
                 )
-                # Left accent indicator
+                # Left accent indicator bar in Vox Yellow
                 elements.append(
-                    f'    <rect x="{card_x:.1f}" y="{card_y + 4.0:.1f}" width="5" height="{card_h - 8.0:.1f}" '
-                    f'rx="2.5" fill="{node_accent}"/>'
+                    f'    <rect x="{card_x:.1f}" y="{card_y + 4.0:.1f}" width="{spacing.ACCENT_BAR_WIDTH:.1f}" '
+                    f'height="{card_h - 8.0:.1f}" rx="3" fill="{accent}"/>'
                 )
                 if include_text:
                     elements.append(
-                        f'    <text x="{card_x + 16.0:.1f}" y="{card_y + 32.0:.1f}" '
+                        f'    <text x="{nx:.1f}" y="{ny + 6.0:.1f}" '
                         f'font-family="{typo.FONT_FAMILY_PRIMARY}" font-size="{typo.SIZE_LABEL_UPPER}" '
-                        f'font-weight="{typo.WEIGHT_SEMIBOLD}" fill="{colors.TEXT_PRIMARY_LIGHT}">{clean_label}</text>'
+                        f'font-weight="{typo.WEIGHT_BOLD}" fill="{colors.TEXT_PRIMARY_LIGHT}" text-anchor="middle">{clean_label}</text>'
                     )
                 elements.append('  </g>')
 

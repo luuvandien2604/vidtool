@@ -50,6 +50,22 @@ def main(argv: list[str] | None = None) -> int:
     write_parser.add_argument("--report-out", default="artifacts/ai_narration/fact_verification_report.json",
                               help="output path for fact_verification_report.json")
 
+    # Subcommand: shooting-script
+    ss_parser = subparsers.add_parser("shooting-script", help="generate shooting_script.yaml and shooting_script.md artifacts")
+    ss_parser.add_argument("fixture", choices=sorted(FIXTURES), help="fixture episode name")
+    ss_parser.add_argument("--artifacts", default="artifacts", help="artifacts directory")
+    ss_parser.add_argument("--out-yaml", default=None, help="custom output path for shooting_script.yaml")
+    ss_parser.add_argument("--out-md", default=None, help="custom output path for shooting_script.md")
+
+    # Subcommand: revise
+    revise_parser = subparsers.add_parser("revise", help="propose or apply feedback-driven editorial revisions")
+    revise_parser.add_argument("fixture", choices=sorted(FIXTURES), help="fixture episode name")
+    revise_parser.add_argument("--feedback", help="free-text feedback string to propose revision")
+    revise_parser.add_argument("--apply", help="proposal ID to apply to editorial_overrides.json")
+    revise_parser.add_argument("--provider", default="mock", choices=["mock", "gemini"],
+                               help="revision interpreter provider (default: mock)")
+    revise_parser.add_argument("--artifacts", default="artifacts", help="artifacts directory")
+
     # Subcommand: render
     render_parser = subparsers.add_parser("render", help="render episode to mp4 video")
     render_parser.add_argument("fixture", choices=sorted(FIXTURES), help="fixture episode name")
@@ -77,13 +93,18 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--timing-provider", default="deterministic",
                             choices=sorted(TIMING_PROVIDERS),
                             help="narration timing provider (default: deterministic)")
+    run_parser.add_argument("--editorial-ai-enabled", action="store_true",
+                            help="enable AI Editorial Director advisory scoring and caption authoring")
+    run_parser.add_argument("--editorial-ai-provider", default="mock",
+                            choices=["mock", "gemini"],
+                            help="editorial AI provider (default: mock)")
     run_parser.add_argument("--voice", default="vi-VN-HoaiMyNeural",
                             help="TTS voice name (default: vi-VN-HoaiMyNeural)")
     run_parser.add_argument("--force", action="store_true",
                             help="recompute every stage, ignoring cached artifacts")
 
     args_list = list(sys.argv[1:] if argv is None else argv)
-    if args_list and args_list[0] not in ("render", "run", "write-narration", "-h", "--help"):
+    if args_list and args_list[0] not in ("render", "run", "write-narration", "shooting-script", "revise", "-h", "--help"):
         args_list.insert(0, "run")
 
     args = parser.parse_args(args_list)
@@ -124,6 +145,122 @@ def main(argv: list[str] | None = None) -> int:
             traceback.print_exc()
             return 1
 
+    if args.command == "shooting-script":
+        data = FIXTURES[args.fixture]()
+        episode_id = data["episode_id"]
+        store = ArtifactStore(args.artifacts)
+        try:
+            from videotool.render.frame_plan import build_episode_frame_plan
+            from videotool.render.shooting_script import generate_shooting_script
+
+            timeline = store.load(episode_id, "timeline")
+            if not timeline:
+                print(f"shooting-script ERROR: timeline artifact not found for episode '{episode_id}'. Run planning pipeline first.")
+                return 1
+
+            geo_plans = store.load(episode_id, "semantic_geometry") or []
+            motion_plan = store.load(episode_id, "motion_plan") or {}
+            media_assets = store.load(episode_id, "media_assets") or []
+            visual_comps = store.load(episode_id, "visual_compositions") or []
+            art_dir = store.load(episode_id, "episode_art_direction") or {}
+            semantic_beats = store.load(episode_id, "semantic_beats") or []
+            editorial_intents = store.load(episode_id, "editorial_intents") or {}
+            editorial_overrides = store.load(episode_id, "editorial_overrides") or []
+
+            plan = build_episode_frame_plan(
+                timeline=timeline,
+                geometry_plans=geo_plans,
+                motion_plan=motion_plan,
+                media_assets=media_assets,
+                visual_compositions=visual_comps,
+                art_direction=art_dir,
+                semantic_beats=semantic_beats,
+                editorial_intents=editorial_intents,
+                editorial_overrides=editorial_overrides,
+            )
+
+            yaml_path = args.out_yaml or (Path(args.artifacts) / f"{args.fixture}_shooting_script.yaml")
+            md_path = args.out_md or (Path(args.artifacts) / f"{args.fixture}_shooting_script.md")
+
+            script_data, md_text = generate_shooting_script(
+                plan=plan,
+                timeline=timeline,
+                semantic_beats=semantic_beats,
+                geometry_plans=geo_plans,
+                media_assets=media_assets,
+                visual_compositions=visual_comps,
+                out_yaml_path=yaml_path,
+                out_md_path=md_path,
+            )
+            print(f"Generated shooting script for {args.fixture} ({len(script_data['beats'])} beats):")
+            print(f"  - Machine-readable YAML: {yaml_path}")
+            print(f"  - Human-readable MD:   {md_path}")
+            return 0
+        except Exception as exc:
+            import traceback
+            print(f"shooting-script ERROR: {exc or repr(exc)}")
+            traceback.print_exc()
+            return 1
+
+    if args.command == "revise":
+        data = FIXTURES[args.fixture]()
+        episode_id = data["episode_id"]
+        store = ArtifactStore(args.artifacts)
+        from videotool.editorial.director.revision import RevisionService
+
+        service = RevisionService(provider_name=args.provider)
+        try:
+            if args.apply:
+                # Apply step
+                overrides = service.apply_revision(episode_id=episode_id, proposal_id=args.apply, store=store)
+                print(f"Applied revision proposal '{args.apply}' to {args.fixture}:")
+                print(f"  Durable overrides count: {len(overrides)}")
+                for ovr in overrides:
+                    print(f"  - [{ovr.get('override_id')}] Beat {ovr.get('beat_id')}: {ovr.get('field')} -> \"{ovr.get('new_value')}\"")
+                print(f"\nOverride saved to {store.episode_dir(episode_id) / 'editorial_overrides.json'}.")
+                print(f"To update video: run planning pipeline and render.")
+                return 0
+
+            elif args.feedback:
+                # Propose step
+                proposal = service.propose_revision(
+                    episode_id=episode_id,
+                    feedback_text=args.feedback,
+                    store=store,
+                )
+                print("================================================================================")
+                print("                      EDITORIAL REVISION PROPOSAL")
+                print("================================================================================")
+                print(f"Proposal ID:   {proposal.proposal_id}")
+                print(f"Target Beat:   {proposal.beat_id or '(none)'}")
+                print(f"Target Node:   {proposal.target_id or '(none)'}")
+                print(f"Field:         {proposal.field}")
+                print(f"Feedback Text: \"{proposal.feedback}\"")
+                print("--------------------------------------------------------------------------------")
+                if not proposal.is_valid:
+                    print(f"Status:        REJECTED / UNABLE TO APPLY")
+                    print(f"Reason:        {proposal.rejection_reason}")
+                    print("================================================================================")
+                    return 1
+
+                print(f"Status:        VALID (Grounded)")
+                print(f"Before:        \"{proposal.old_value}\"")
+                print(f"After:         \"{proposal.new_value}\"")
+                print(f"Rationale:     {proposal.reason}")
+                print("--------------------------------------------------------------------------------")
+                print(f"To apply this change, run:")
+                print(f"  python -m videotool.cli revise {args.fixture} --apply {proposal.proposal_id}")
+                print("================================================================================")
+                return 0
+            else:
+                print("revise ERROR: Please provide either --feedback \"<text>\" to propose or --apply <proposal_id> to commit.")
+                return 1
+        except Exception as exc:
+            import traceback
+            print(f"revise ERROR: {exc or repr(exc)}")
+            traceback.print_exc()
+            return 1
+
     if args.command == "render":
         data = FIXTURES[args.fixture]()
         episode_id = data["episode_id"]
@@ -132,6 +269,7 @@ def main(argv: list[str] | None = None) -> int:
             from videotool.domain.timing import NarrationTiming
             from videotool.editorial.pacing import audit_speech_pacing
             from videotool.render import render_episode
+            from videotool.render.shooting_script import generate_shooting_script
 
             audio_provider_name = None if args.no_audio else args.audio_provider
             result = render_episode(
@@ -144,6 +282,47 @@ def main(argv: list[str] | None = None) -> int:
                 voice=args.voice,
             )
             print(f"rendered {args.fixture} -> {result.output_path} ({result.duration_sec:.2f}s)")
+
+            # Auto-generate shooting script alongside render
+            try:
+                timeline = store.load(episode_id, "timeline")
+                geo_plans = store.load(episode_id, "semantic_geometry") or []
+                motion_plan = store.load(episode_id, "motion_plan") or {}
+                media_assets = store.load(episode_id, "media_assets") or []
+                visual_comps = store.load(episode_id, "visual_compositions") or []
+                art_dir = store.load(episode_id, "episode_art_direction") or {}
+                semantic_beats = store.load(episode_id, "semantic_beats") or []
+                editorial_intents = store.load(episode_id, "editorial_intents") or {}
+                editorial_overrides = store.load(episode_id, "editorial_overrides") or []
+
+                from videotool.render.frame_plan import build_episode_frame_plan
+                plan = build_episode_frame_plan(
+                    timeline=timeline,
+                    geometry_plans=geo_plans,
+                    motion_plan=motion_plan,
+                    media_assets=media_assets,
+                    visual_compositions=visual_comps,
+                    art_direction=art_dir,
+                    semantic_beats=semantic_beats,
+                    editorial_intents=editorial_intents,
+                    editorial_overrides=editorial_overrides,
+                )
+                yaml_path = Path(args.artifacts) / f"{args.fixture}_shooting_script.yaml"
+                md_path = Path(args.artifacts) / f"{args.fixture}_shooting_script.md"
+                generate_shooting_script(
+                    plan=plan,
+                    timeline=timeline,
+                    semantic_beats=semantic_beats,
+                    geometry_plans=geo_plans,
+                    media_assets=media_assets,
+                    visual_compositions=visual_comps,
+                    out_yaml_path=yaml_path,
+                    out_md_path=md_path,
+                )
+                print(f"  shooting script: {yaml_path} and {md_path}")
+            except Exception as ss_exc:
+                print(f"  warn: failed to auto-generate shooting script: {ss_exc}")
+
             if result.audio_is_placeholder is True:
                 click_info = " [click_track]" if args.click_track else ""
                 print(f"  audio: {audio_provider_name} (placeholder){click_info}")
@@ -173,6 +352,7 @@ def main(argv: list[str] | None = None) -> int:
     # Planning pipeline run
     data = FIXTURES[args.fixture]()
     from videotool.editorial.media import MediaAcquisitionConfig
+    from videotool.pipeline.policy import ExecutionPolicy
     media_config = MediaAcquisitionConfig(provider=args.media_provider)
 
     timing_provider = None
@@ -180,8 +360,15 @@ def main(argv: list[str] | None = None) -> int:
         timing_provider = build_timing_provider("azure", voice=args.voice,
                                                 cache_dir=Path(args.artifacts) / "tts_cache")
 
-    runner = PipelineRunner(ArtifactStore(args.artifacts), mode=args.mode,
-                            force=args.force, media_config=media_config,
+    policy = ExecutionPolicy(
+        mode=args.mode,
+        force=args.force,
+        editorial_ai_enabled=args.editorial_ai_enabled,
+        editorial_ai_provider=args.editorial_ai_provider,
+    )
+
+    runner = PipelineRunner(ArtifactStore(args.artifacts), policy=policy,
+                            media_config=media_config,
                             timing_provider=timing_provider)
     result = runner.run(EpisodeInput(**data))
 

@@ -105,6 +105,7 @@ class TextRenderElement:
     bounds_px: PixelRect
     entrance_sec: float
     exit_sec: float
+    content_source: str = "raw"  # "raw" | "ai_authored" | "override"
     style_name: str = "NodeLabel"
     ass_dialogue: str = ""
 
@@ -115,6 +116,7 @@ class TextRenderElement:
             "text": self.text,
             "role": self.role,
             "text_role": self.text_role,
+            "content_source": self.content_source,
             "z_index": self.z_index,
             "bounds_norm": dict(self.bounds_norm),
             "bounds_px": self.bounds_px.to_dict(),
@@ -284,6 +286,8 @@ def build_episode_frame_plan(
     visual_compositions: list[dict] | None = None,
     art_direction: dict | None = None,
     semantic_beats: list[dict] | None = None,
+    editorial_intents: dict[str, Any] | list[dict[str, Any]] | None = None,
+    editorial_overrides: list[dict[str, Any]] | None = None,
 ) -> EpisodeFramePlan:
     """Build a deterministic, pure-Python frame plan from planning pipeline artifacts."""
     canvas_info = timeline.get("canvas", {})
@@ -296,6 +300,22 @@ def build_episode_frame_plan(
     motion_by_beat = {p["beat_id"]: p for p in (motion_plan or {}).get("plans", [])}
     asset_by_id = {a["asset_id"]: a for a in (media_assets or [])}
     beat_by_id = {b["beat_id"]: b for b in (semantic_beats or [])}
+
+    # Normalize editorial_intents into dict by beat_id
+    intents_by_beat: dict[str, Any] = {}
+    if isinstance(editorial_intents, dict):
+        if "items" in editorial_intents and isinstance(editorial_intents["items"], list):
+            for item in editorial_intents["items"]:
+                if isinstance(item, dict) and "beat_id" in item:
+                    intents_by_beat[item["beat_id"]] = item
+        else:
+            intents_by_beat = dict(editorial_intents)
+    elif isinstance(editorial_intents, list):
+        for item in editorial_intents:
+            if isinstance(item, dict) and "beat_id" in item:
+                intents_by_beat[item["beat_id"]] = item
+            elif hasattr(item, "beat_id"):
+                intents_by_beat[item.beat_id] = item
 
     # Color palette
     raw_accent = (art_direction or {}).get("accent", {}).get("primary", "#E6C280")
@@ -320,11 +340,11 @@ def build_episode_frame_plan(
         comp_motion = motion_by_beat.get(beat_id, {})
         camera_behavior = comp_motion.get("camera_behavior", "stable")
         beat_info = beat_by_id.get(beat_id, {})
+        beat_intent = intents_by_beat.get(beat_id)
 
-        # Motion events for this beat
-        events = comp_motion.get("events", [])
-        emphasis_by_layer = {}
-        for ev in events:
+        # Build motion events map by layer
+        emphasis_by_layer: dict[str, dict] = {}
+        for ev in comp_motion.get("events", []):
             if ev.get("kind") == "EMPHASIS":
                 emphasis_by_layer[ev["layer_id"]] = ev
 
@@ -415,8 +435,60 @@ def build_episode_frame_plan(
                     ))
                 else:
                     # Text / Graphic Node
-                    text_str = _extract_quote_or_label_text(node, beat_info)
                     text_role_val = node.get("text_role", "LABEL") or "LABEL"
+                    content_source = "raw"
+                    text_str = ""
+
+                    # 1. Check editorial overrides
+                    if editorial_overrides:
+                        for ovr in editorial_overrides:
+                            if ovr.get("target_id") == node_id and ovr.get("field") == "caption":
+                                text_str = ovr.get("new_value", "")
+                                content_source = "override"
+                                break
+                            elif ovr.get("beat_id") == beat_id and ovr.get("target_id") in (node_id, role, (node.get("semantic_refs") or [""])[0]):
+                                text_str = ovr.get("new_value", "")
+                                content_source = "override"
+                                break
+
+                    # 2. Check AI proposed captions (if no override applied)
+                    if not text_str and beat_intent:
+                        captions = (
+                            beat_intent.get("captions", {})
+                            if isinstance(beat_intent, dict)
+                            else getattr(beat_intent, "captions", {})
+                        )
+                        cand_caption = captions.get(node_id)
+                        if not cand_caption:
+                            for ref in node.get("semantic_refs", []):
+                                if ref in captions:
+                                    cand_caption = captions[ref]
+                                    break
+                                for k, v in captions.items():
+                                    if k.lower() == ref.lower():
+                                        cand_caption = v
+                                        break
+                                if cand_caption:
+                                    break
+
+                        if cand_caption:
+                            from videotool.editorial.director.caption_validator import validate_caption
+                            is_valid, _ = validate_caption(
+                                caption=cand_caption,
+                                narration_text=beat_info.get("narration_text", "") if isinstance(beat_info, dict) else getattr(beat_info, "narration_text", ""),
+                                entities=beat_info.get("entities", []) if isinstance(beat_info, dict) else getattr(beat_info, "entities", []),
+                                locations=beat_info.get("locations", []) if isinstance(beat_info, dict) else getattr(beat_info, "locations", []),
+                                dates=beat_info.get("dates", []) if isinstance(beat_info, dict) else getattr(beat_info, "dates", []),
+                                text_role=text_role_val,
+                            )
+                            if is_valid:
+                                text_str = cand_caption
+                                content_source = "ai_authored"
+
+                    # 3. Fallback to deterministic raw entity text extraction
+                    if not text_str:
+                        text_str = _extract_quote_or_label_text(node, beat_info)
+                        content_source = "raw"
 
                     style_name = "NodeLabel"
                     if text_role_val == "QUOTE" or role == "QUOTE":
@@ -438,6 +510,7 @@ def build_episode_frame_plan(
                         text=text_str,
                         role=role,
                         text_role=text_role_val,
+                        content_source=content_source,
                         z_index=z_index,
                         bounds_norm=bounds_norm,
                         bounds_px=bounds_px,
