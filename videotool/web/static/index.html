@@ -25,6 +25,7 @@
         <button class="nav-tab" data-tab="tabScript">📋 Shooting Script (13 Cột)</button>
         <button class="nav-tab" data-tab="tabJson">🔍 JSON Manifest</button>
         <button class="nav-tab" data-tab="tabTerminal">🖥️ Terminal Console <span id="navJobBadge" class="nav-badge hidden">RUNNING</span></button>
+        <button class="nav-tab" data-tab="tabGuide">📖 Hướng Dẫn Sử Dụng</button>
       </nav>
     </div>
 
@@ -324,6 +325,98 @@
         </div>
         <div id="terminalLog" class="terminal-screen">
           <div class="term-line term-system">VideoTool Studio Console initialized. Ready for pipeline commands.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 5: HƯỚNG DẪN SỬ DỤNG -->
+    <div id="tabGuide" class="tab-pane">
+      <div class="card guide-card">
+        <div class="card-head">
+          <div class="card-title-group">
+            <span class="card-icon">📖</span>
+            <h2 class="card-heading">Hướng Dẫn Sử Dụng VideoTool Studio</h2>
+          </div>
+        </div>
+
+        <div class="guide-content">
+          <section class="guide-section">
+            <h3 class="guide-h3">1. Tại sao đã có sẵn dữ liệu khi mở web?</h3>
+            <p>
+              VideoTool hoạt động dựa trên kiến trúc <strong>Durable Artifacts (Dữ liệu tạo sẵn)</strong>. 
+              Khi hệ thống chạy các bước phân tích kịch bản, trích xuất thực thể, tìm kiếm tư liệu ảnh, tính toán chuyển động và phân cảnh hình học, 
+              kết quả được lưu thành các file JSON trong thư mục <code>artifacts/</code> (ví dụ: <code>timeline.json</code>, <code>semantic_geometry.json</code>, <code>shooting_script.json</code>).
+            </p>
+            <p>
+              Tập phim mặc định <strong><code>berlin_wall</code></strong> là fixture chuẩn của dự án đã được lập kế hoạch sẵn (12 Beats, 66.2 giây). 
+              Do đó, ngay khi khởi động Web UI, hệ thống sẽ đọc các artifacts này lên màn hình để bạn có thể xem, tương tác và kiểm duyệt ngay lập tức mà không cần chờ chạy lại từ đầu!
+            </p>
+          </section>
+
+          <section class="guide-section">
+            <h3 class="guide-h3">2. Các tính năng chính và cách sử dụng</h3>
+            
+            <div class="guide-grid">
+              <div class="guide-box">
+                <h4>🎬 1. Xem Video & Đồng bộ Beats</h4>
+                <ul>
+                  <li><strong>Phát video</strong>: Xem video được render với độ phân giải Full HD 1080p, đồ họa cắt dán dừng hình (stop-motion collage) phong cách Vox.</li>
+                  <li><strong>Tua nhanh theo Beat</strong>: Nhấp vào các ô <code>B1</code>, <code>B2</code>... trên thanh timeline để nhảy đến đúng giây bắt đầu của beat đó.</li>
+                  <li><strong>Thẻ Beat đang phát</strong>: Tự động hiển thị lời đọc narration, visual family (bản đồ, chân dung, tài liệu...) và thời lượng tương ứng.</li>
+                </ul>
+              </div>
+
+              <div class="guide-box">
+                <h4>📋 2. Shooting Script (Bảng 13 Cột)</h4>
+                <ul>
+                  <li>Bảng chi tiết toàn bộ kịch bản hình ảnh theo chuẩn đạo diễn tài liệu: Element ID, loại hình, nội dung chữ, nguồn tư liệu, tọa độ trên canvas (x, y, w, h), thời gian xuất hiện/biến mất, chuyển động (Ken Burns, Pan, Fade).</li>
+                  <li><strong>Nguồn gốc chữ (Source)</strong>:
+                    <span class="source-pill source-raw">[raw]</span> (Trích xuất gốc) | 
+                    <span class="source-pill source-ai">[ai_authored]</span> (AI biên tập) | 
+                    <span class="source-pill source-override">[override]</span> (Đạo diễn chỉ định)
+                  </li>
+                </ul>
+              </div>
+
+              <div class="guide-box">
+                <h4>✍️ 3. Feedback Revision Studio</h4>
+                <ul>
+                  <li><strong>Nhập yêu cầu sửa đổi</strong>:
+                    <br><code>Beat 4: caption Hungary -> Escape route begins</code>
+                    <br><code>Beat 3: 'Gunter Schabowski' -> 'Official Schabowski'</code>
+                  </li>
+                  <li><strong>Cơ chế Chống Bịa Đặt (Anti-Hallucination)</strong>: Hệ thống sẽ kiểm tra chữ mới có trong ngữ cảnh lời bình không. Nếu bạn nhập từ lạ (ví dụ: "Paris", "London" vào tập Berlin), hệ thống sẽ từ chối để đảm bảo tính xác thực lịch sử.</li>
+                  <li><strong>1-Click Apply</strong>: Nhấp để lưu đè (override) và cập nhật kịch bản tức thì.</li>
+                </ul>
+              </div>
+
+              <div class="guide-box">
+                <h4>🚀 4. Điều Khiển Pipeline & Render Video</h4>
+                <ul>
+                  <li><strong>Planning Pipeline</strong>: Tính toán lại bố cục hình ảnh và kịch bản phân cảnh khi có override mới.</li>
+                  <li><strong>Render Video</strong>: Sử dụng FFmpeg để render video MP4.
+                    <br><em>Tính năng Incremental Cache:</em> Hệ thống tự động phát hiện và chỉ render lại những beat nào bị thay đổi, tái sử dụng các clip cũ giúp tiết kiệm thời gian!
+                  </li>
+                  <li><strong>Terminal Console</strong>: Xem tiến trình và log dòng lệnh trực tiếp theo thời gian thực.</li>
+                </ul>
+              </div>
+            </div>
+          </section>
+
+          <section class="guide-section">
+            <h3 class="guide-h3">3. Lệnh dòng lệnh (CLI) hữu ích</h3>
+            <pre class="code-editor"><code># 1. Khởi động Web Dashboard:
+.venv/bin/python -m videotool.cli serve --port 8080
+
+# 2. Chạy Planning Pipeline cho tập phim:
+.venv/bin/python -m videotool.cli berlin_wall --mode draft
+
+# 3. Render video với âm thanh:
+.venv/bin/python -m videotool.cli render berlin_wall --audio-provider silence
+
+# 4. Xuất shooting script:
+.venv/bin/python -m videotool.cli shooting-script berlin_wall</code></pre>
+          </section>
         </div>
       </div>
     </div>

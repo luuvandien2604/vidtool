@@ -770,3 +770,84 @@ body {
 .text-green { color: var(--vox-green); }
 .text-error { color: var(--vox-coral); }
 .text-center { text-align: center; }
+
+/* ==========================================================================
+   Guide Tab (Tab 5)
+   ========================================================================== */
+.guide-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.guide-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+}
+
+.guide-h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--vox-gold);
+  margin-bottom: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.guide-section p {
+  font-size: 0.82rem;
+  color: var(--text-main);
+  margin-bottom: 0.5rem;
+  line-height: 1.5;
+}
+
+.guide-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.8rem;
+  margin-top: 0.6rem;
+}
+
+@media (max-width: 900px) {
+  .guide-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.guide-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 0.8rem;
+}
+
+.guide-box h4 {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--vox-coral);
+  margin-bottom: 0.4rem;
+}
+
+.guide-box ul {
+  padding-left: 1.1rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.guide-box li code {
+  background: var(--bg-input);
+  color: var(--vox-yellow);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
