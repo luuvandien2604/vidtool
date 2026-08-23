@@ -52,14 +52,14 @@ def main(argv: list[str] | None = None) -> int:
 
     # Subcommand: shooting-script
     ss_parser = subparsers.add_parser("shooting-script", help="generate shooting_script.json and shooting_script.md artifacts")
-    ss_parser.add_argument("fixture", choices=sorted(FIXTURES), help="fixture episode name")
+    ss_parser.add_argument("fixture", help="fixture name or episode_id in artifacts")
     ss_parser.add_argument("--artifacts", default="artifacts", help="artifacts directory")
     ss_parser.add_argument("--out-json", default=None, help="custom output path for shooting_script.json")
     ss_parser.add_argument("--out-md", default=None, help="custom output path for shooting_script.md")
 
     # Subcommand: revise
     revise_parser = subparsers.add_parser("revise", help="propose or apply feedback-driven editorial revisions")
-    revise_parser.add_argument("fixture", choices=sorted(FIXTURES), help="fixture episode name")
+    revise_parser.add_argument("fixture", help="fixture name or episode_id in artifacts")
     revise_parser.add_argument("--feedback", help="free-text feedback string to propose revision")
     revise_parser.add_argument("--apply", help="proposal ID to apply to editorial_overrides.json")
     revise_parser.add_argument("--provider", default="mock", choices=["mock", "gemini"],
@@ -68,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Subcommand: render
     render_parser = subparsers.add_parser("render", help="render episode to mp4 video")
-    render_parser.add_argument("fixture", choices=sorted(FIXTURES), help="fixture episode name")
+    render_parser.add_argument("fixture", help="fixture name or episode_id in artifacts")
     render_parser.add_argument("--artifacts", default="artifacts", help="artifacts directory")
     render_parser.add_argument("--out", default="out.mp4", help="output mp4 path")
     render_parser.add_argument("--renderer", default="ffmpeg", choices=["ffmpeg"],
@@ -163,8 +163,11 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     if args.command == "shooting-script":
-        data = FIXTURES[args.fixture]()
-        episode_id = data["episode_id"]
+        if args.fixture in FIXTURES:
+            data = FIXTURES[args.fixture]()
+            episode_id = data["episode_id"]
+        else:
+            episode_id = args.fixture
         store = ArtifactStore(args.artifacts)
         try:
             from videotool.render.frame_plan import build_episode_frame_plan
@@ -220,8 +223,11 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     if args.command == "revise":
-        data = FIXTURES[args.fixture]()
-        episode_id = data["episode_id"]
+        if args.fixture in FIXTURES:
+            data = FIXTURES[args.fixture]()
+            episode_id = data["episode_id"]
+        else:
+            episode_id = args.fixture
         store = ArtifactStore(args.artifacts)
         from videotool.editorial.director.revision import RevisionService
 
@@ -279,8 +285,11 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     if args.command == "render":
-        data = FIXTURES[args.fixture]()
-        episode_id = data["episode_id"]
+        if args.fixture in FIXTURES:
+            data = FIXTURES[args.fixture]()
+            episode_id = data["episode_id"]
+        else:
+            episode_id = args.fixture
         store = ArtifactStore(args.artifacts)
         try:
             from videotool.domain.timing import NarrationTiming

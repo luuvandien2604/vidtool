@@ -23,8 +23,8 @@ load_env_fallback()
 def test_live_gemini_narration_writer_and_fact_verifier(tmp_path):
     """End-to-end live test of Gemini scriptwriting and Google Search fact grounding."""
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        pytest.skip("GEMINI_API_KEY not set in environment or .env")
+    if not api_key or api_key.startswith("your_") or "mock" in api_key or api_key == "test":
+        pytest.skip("Valid GEMINI_API_KEY not set in environment or .env")
 
     out_narr = tmp_path / "gemini_narration.json"
     out_rep = tmp_path / "gemini_fact_report.json"

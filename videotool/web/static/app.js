@@ -68,16 +68,32 @@
     propNewVal: document.getElementById('propNewVal'),
     propBeat: document.getElementById('propBeat'),
     propTarget: document.getElementById('propTarget'),
-    propRationale: document.getElementById('propRationale'),
-    propRejectionBox: document.getElementById('propRejectionBox'),
-    propRejection: document.getElementById('propRejection'),
+    propReason: document.getElementById('propReason'),
     btnApplyProposal: document.getElementById('btnApplyProposal'),
-    suggestionChips: document.querySelectorAll('.suggestion-chip'),
 
     // Terminal
     terminalLog: document.getElementById('terminalLog'),
-    jobStatusPill: document.getElementById('jobStatusPill'),
     btnClearConsole: document.getElementById('btnClearConsole'),
+    jobStatusPill: document.getElementById('jobStatusPill'),
+    navJobBadge: document.getElementById('navJobBadge'),
+
+    // New Project Modal
+    btnNewProject: document.getElementById('btnNewProject'),
+    modalNewProject: document.getElementById('modalNewProject'),
+    btnCloseModal: document.getElementById('btnCloseModal'),
+    btnCancelModal: document.getElementById('btnCancelModal'),
+    formNewProject: document.getElementById('formNewProject'),
+    inputTopic: document.getElementById('inputTopic'),
+    inputEpId: document.getElementById('inputEpId'),
+    lblScriptAi: document.getElementById('lblScriptAi'),
+    lblScriptCustom: document.getElementById('lblScriptCustom'),
+    customScriptBox: document.getElementById('customScriptBox'),
+    textareaScript: document.getElementById('textareaScript'),
+    selectMediaProvider: document.getElementById('selectMediaProvider'),
+    selectAudioProvider: document.getElementById('selectAudioProvider'),
+    selectAiProvider: document.getElementById('selectAiProvider'),
+    selectVoice: document.getElementById('selectVoice'),
+    checkAutoRender: document.getElementById('checkAutoRender'),
   };
 
   // Helper: Format Seconds to M:SS.SS
@@ -484,7 +500,24 @@
     }
   }
 
-  function startLogPolling(jobId) {
+  function switchToTab(tabId) {
+    el.tabButtons.forEach(b => {
+      if (b.getAttribute('data-tab') === tabId) {
+        b.classList.add('active');
+      } else {
+        b.classList.remove('active');
+      }
+    });
+    el.tabContents.forEach(c => {
+      if (c.id === tabId) {
+        c.classList.add('active');
+      } else {
+        c.classList.remove('active');
+      }
+    });
+  }
+
+  function startLogPolling(jobId, onComplete = null) {
     if (state.pollingTimer) clearInterval(state.pollingTimer);
 
     state.pollingTimer = setInterval(async () => {
@@ -496,10 +529,10 @@
         if (job.lines && job.lines.length) {
           job.lines.forEach(line => {
             let type = 'info';
-            if (line.startsWith('$')) type = 'cmd';
-            else if (line.toLowerCase().includes('error') || line.toLowerCase().includes('failed')) type = 'error';
-            else if (line.toLowerCase().includes('rendered') || line.toLowerCase().includes('passed') || line.toLowerCase().includes('generated')) type = 'success';
-            else if (line.toLowerCase().includes('warn')) type = 'warn';
+            if (line.startsWith('$') || line.startsWith('===')) type = 'cmd';
+            else if (line.toLowerCase().includes('error') || line.toLowerCase().includes('failed') || line.includes('❌')) type = 'error';
+            else if (line.toLowerCase().includes('rendered') || line.toLowerCase().includes('passed') || line.toLowerCase().includes('generated') || line.includes('🎉') || line.includes('✓')) type = 'success';
+            else if (line.toLowerCase().includes('warn') || line.startsWith('📝') || line.startsWith('⚙️') || line.startsWith('📋') || line.startsWith('🎬')) type = 'warn';
 
             logTerminal(line, type);
           });
@@ -510,20 +543,26 @@
           clearInterval(state.pollingTimer);
           el.jobStatusPill.textContent = `Hoàn tất (${job.elapsed_sec}s)`;
           el.jobStatusPill.className = 'badge badge-green';
+          el.navJobBadge.classList.add('hidden');
           logTerminal(`✓ Task finished successfully in ${job.elapsed_sec}s`, 'success');
-          // Refresh state
-          await loadEpisodeStatus();
-          await loadShootingScript();
+          
+          if (typeof onComplete === 'function') {
+            await onComplete();
+          } else {
+            await loadEpisodeStatus();
+            await loadShootingScript();
+          }
         } else if (job.status === 'failed') {
           clearInterval(state.pollingTimer);
           el.jobStatusPill.textContent = `Thất bại (exit ${job.exit_code})`;
           el.jobStatusPill.className = 'badge badge-coral';
+          el.navJobBadge.classList.add('hidden');
           logTerminal(`✗ Task failed with exit code ${job.exit_code}`, 'error');
         }
       } catch (err) {
         clearInterval(state.pollingTimer);
       }
-    }, 600);
+    }, 500);
   }
 
   function logTerminal(text, type = 'info') {
@@ -570,9 +609,10 @@
   });
 
   el.btnRefresh.addEventListener('click', async () => {
+    await loadEpisodes();
     await loadEpisodeStatus();
     await loadShootingScript();
-    logTerminal('Refreshed episode status and scripts', 'system');
+    logTerminal('Refreshed episode list, status and scripts', 'system');
   });
 
   // Filter & Search
@@ -586,13 +626,152 @@
   // Tab Switching
   el.tabButtons.forEach(btn => {
     btn.addEventListener('click', () => {
-      el.tabButtons.forEach(b => b.classList.remove('active'));
-      el.tabContents.forEach(c => c.classList.remove('active'));
-      btn.classList.add('active');
-      const target = document.getElementById(btn.getAttribute('data-tab'));
-      if (target) target.classList.add('active');
+      const targetId = btn.getAttribute('data-tab');
+      switchToTab(targetId);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Modal: Tạo Dự Án Mới (New Project Topic)
+  // ---------------------------------------------------------------------------
+  function slugify(text) {
+    return text
+      .toString()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9 ]/g, '')
+      .replace(/\s+/g, '_');
+  }
+
+  function openNewProjectModal() {
+    el.inputTopic.value = '';
+    el.inputEpId.value = '';
+    el.textareaScript.value = '';
+    el.modalNewProject.classList.remove('hidden');
+    el.inputTopic.focus();
+  }
+
+  function closeNewProjectModal() {
+    el.modalNewProject.classList.add('hidden');
+  }
+
+  if (el.btnNewProject) {
+    el.btnNewProject.addEventListener('click', openNewProjectModal);
+  }
+  if (el.btnCloseModal) {
+    el.btnCloseModal.addEventListener('click', closeNewProjectModal);
+  }
+  if (el.btnCancelModal) {
+    el.btnCancelModal.addEventListener('click', closeNewProjectModal);
+  }
+  if (el.modalNewProject) {
+    el.modalNewProject.addEventListener('click', (e) => {
+      if (e.target === el.modalNewProject) closeNewProjectModal();
+    });
+  }
+
+  // Auto-slugify topic to epId
+  if (el.inputTopic) {
+    el.inputTopic.addEventListener('input', () => {
+      const topic = el.inputTopic.value;
+      el.inputEpId.value = slugify(topic);
+    });
+  }
+
+  // Radio Tab Toggle for Script Mode
+  const scriptRadioButtons = document.querySelectorAll('input[name="scriptMode"]');
+  scriptRadioButtons.forEach(radio => {
+    radio.addEventListener('change', () => {
+      if (radio.value === 'custom') {
+        el.customScriptBox.classList.remove('hidden');
+        el.lblScriptCustom.classList.add('active');
+        el.lblScriptAi.classList.remove('active');
+        el.textareaScript.focus();
+      } else {
+        el.customScriptBox.classList.add('hidden');
+        el.lblScriptAi.classList.add('active');
+        el.lblScriptCustom.classList.remove('active');
+      }
+    });
+  });
+
+  // Submit New Project Form
+  if (el.formNewProject) {
+    el.formNewProject.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const topic = el.inputTopic.value.trim();
+      if (!topic) return;
+
+      const epId = el.inputEpId.value.trim() || slugify(topic) || `ep_${Date.now()}`;
+      const scriptRadio = document.querySelector('input[name="scriptMode"]:checked');
+      const scriptMode = scriptRadio ? scriptRadio.value : 'ai';
+      const scriptText = scriptMode === 'custom' ? el.textareaScript.value.trim() : '';
+      const mediaProvider = el.selectMediaProvider.value;
+      const audioProvider = el.selectAudioProvider.value;
+      const aiProvider = el.selectAiProvider.value;
+      const voice = el.selectVoice.value;
+      const autoRender = el.checkAutoRender.checked;
+
+      closeNewProjectModal();
+      switchToTab('tabTerminal');
+
+      logTerminal(`================================================================================`, 'cmd');
+      logTerminal(`🚀 BẮT ĐẦU SẢN XUẤT TẬP PHIM: "${topic}"`, 'cmd');
+      logTerminal(`   Mã định danh:   ${epId}`, 'info');
+      logTerminal(`   Kịch bản:       ${scriptMode === 'ai' ? 'AI Tự động nghiên cứu' : 'Nhập thủ công (' + scriptText.length + ' ký tự)'}`, 'info');
+      logTerminal(`   Nguồn ảnh:      ${mediaProvider} | Âm thanh: ${audioProvider}`, 'info');
+      logTerminal(`================================================================================`, 'cmd');
+
+      el.jobStatusPill.textContent = 'Đang chạy Auto Vox Pipeline...';
+      el.jobStatusPill.className = 'badge badge-coral';
+      el.navJobBadge.classList.remove('hidden');
+      el.navJobBadge.textContent = 'RUNNING';
+
+      state.logOffset = 0;
+
+      try {
+        const res = await fetch('/api/episodes/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            topic,
+            episode_id: epId,
+            script_text: scriptText,
+            media_provider: mediaProvider,
+            audio_provider: audioProvider,
+            ai_provider: aiProvider,
+            voice,
+            auto_render: autoRender,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          logTerminal(`❌ Lỗi khởi tạo: ${data.error || 'Unknown error'}`, 'error');
+          el.jobStatusPill.textContent = 'Lỗi';
+          el.jobStatusPill.className = 'badge badge-coral';
+          el.navJobBadge.classList.add('hidden');
+          return;
+        }
+
+        startLogPolling(data.job_id, async () => {
+          await loadEpisodes();
+          el.episodeSelect.value = data.episode_id;
+          state.currentFixture = data.episode_id;
+          await loadEpisodeStatus();
+          await loadShootingScript();
+          switchToTab('tabStudio');
+        });
+      } catch (err) {
+        logTerminal(`❌ Lỗi mạng: ${err.message}`, 'error');
+        el.jobStatusPill.textContent = 'Lỗi mạng';
+        el.jobStatusPill.className = 'badge badge-coral';
+        el.navJobBadge.classList.add('hidden');
+      }
+    });
+  }
 
   // ---------------------------------------------------------------------------
   // Initialization

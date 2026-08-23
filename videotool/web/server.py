@@ -191,24 +191,29 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
             self._send_error_json(f"Malformed JSON request: {e}", status=400)
             return
 
-        # 1. API: Propose Revision
+        # 1. API: Create Episode for Arbitrary Topic
+        if path == "/api/episodes/create":
+            self._handle_post_create_episode(payload)
+            return
+
+        # 2. API: Propose Revision
         if path == "/api/revise/propose":
             self._handle_post_revise_propose(payload)
             return
 
-        # 2. API: Apply Revision
+        # 3. API: Apply Revision
         if path == "/api/revise/apply":
             self._handle_post_revise_apply(payload)
             return
 
-        # 3. API: Delete Override
+        # 4. API: Delete Override
         delete_override_match = re.match(r"^/api/episodes/([^/]+)/overrides/delete$", path)
         if delete_override_match:
             fixture_name = delete_override_match.group(1)
             self._handle_post_delete_override(fixture_name, payload)
             return
 
-        # 4. API: Execute Pipeline Command
+        # 5. API: Execute Pipeline Command
         if path == "/api/commands/execute":
             self._handle_post_execute_command(payload)
             return
@@ -221,13 +226,18 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
 
     def _handle_get_episodes(self) -> None:
         episodes = []
+        seen_ep_ids = set()
+
+        # 1. Built-in fixtures
         for name in sorted(FIXTURES):
             try:
                 data = FIXTURES[name]()
                 ep_id = data["episode_id"]
+                seen_ep_ids.add(ep_id)
+                seen_ep_ids.add(name)
                 video_path = _get_episode_video_path(self.artifacts_root, ep_id, name)
                 has_timeline = (self.store.episode_dir(ep_id) / "timeline.json").is_file()
-                has_script = (self.artifacts_root / f"{name}_shooting_script.json").is_file()
+                has_script = (self.artifacts_root / f"{name}_shooting_script.json").is_file() or (self.store.episode_dir(ep_id) / "shooting_script.json").is_file()
                 overrides = self.store.load(ep_id, "editorial_overrides") or []
 
                 episodes.append({
@@ -238,19 +248,59 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
                     "has_video": video_path is not None,
                     "has_shooting_script": has_script,
                     "overrides_count": len(overrides) if isinstance(overrides, list) else 0,
+                    "is_custom": False,
                 })
             except Exception:
                 continue
 
+        # 2. Custom created projects in artifacts/
+        if self.artifacts_root.is_dir():
+            for ep_dir in sorted(self.artifacts_root.iterdir()):
+                if not ep_dir.is_dir() or ep_dir.name in seen_ep_ids or ep_dir.name.startswith((".", "media_", "tts_", "beat_")):
+                    continue
+                ep_id = ep_dir.name
+                meta_path = ep_dir / "meta.json"
+                title = ep_id.replace("_", " ").title()
+                if meta_path.is_file():
+                    try:
+                        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                        title = meta.get("title") or meta.get("topic") or title
+                    except Exception:
+                        pass
+
+                video_path = _get_episode_video_path(self.artifacts_root, ep_id, ep_id)
+                has_timeline = (ep_dir / "timeline.json").is_file()
+                has_script = (self.artifacts_root / f"{ep_id}_shooting_script.json").is_file() or (ep_dir / "shooting_script.json").is_file()
+                overrides = self.store.load(ep_id, "editorial_overrides") or []
+
+                episodes.append({
+                    "fixture_name": ep_id,
+                    "episode_id": ep_id,
+                    "title": title,
+                    "has_timeline": has_timeline,
+                    "has_video": video_path is not None,
+                    "has_shooting_script": has_script,
+                    "overrides_count": len(overrides) if isinstance(overrides, list) else 0,
+                    "is_custom": True,
+                })
+
         self._send_json({"episodes": episodes})
 
     def _handle_get_episode_status(self, fixture_name: str) -> None:
-        if fixture_name not in FIXTURES:
-            self._send_error_json(f"Fixture '{fixture_name}' not found", status=404)
-            return
-
-        data = FIXTURES[fixture_name]()
-        ep_id = data["episode_id"]
+        title = fixture_name.replace("_", " ").title()
+        if fixture_name in FIXTURES:
+            data = FIXTURES[fixture_name]()
+            ep_id = data["episode_id"]
+            title = data.get("title", title)
+        else:
+            ep_id = fixture_name
+            meta_path = self.store.episode_dir(ep_id) / "meta.json"
+            if meta_path.is_file():
+                try:
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    title = meta.get("title") or meta.get("topic") or title
+                except Exception:
+                    pass
 
         timeline = self.store.load(ep_id, "timeline") or {}
         duration_sec = timeline.get("total_duration_sec", 0.0)
@@ -260,7 +310,7 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
         audio_path = self.store.episode_dir(ep_id) / "narration_audio.wav"
 
         script_json_path = self.artifacts_root / f"{fixture_name}_shooting_script.json"
-        has_script = script_json_path.is_file()
+        has_script = script_json_path.is_file() or (self.store.episode_dir(ep_id) / "shooting_script.json").is_file()
 
         # Visual families breakdown
         families = list({b.get("visual_family", "unknown") for b in beats if isinstance(b, dict)})
@@ -268,7 +318,7 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
         self._send_json({
             "fixture_name": fixture_name,
             "episode_id": ep_id,
-            "title": data.get("title", fixture_name.replace("_", " ").title()),
+            "title": title,
             "total_duration_sec": duration_sec,
             "beat_count": len(beats),
             "visual_families": families,
@@ -282,12 +332,11 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
         })
 
     def _handle_get_shooting_script(self, fixture_name: str) -> None:
-        if fixture_name not in FIXTURES:
-            self._send_error_json(f"Fixture '{fixture_name}' not found", status=404)
-            return
-
-        data = FIXTURES[fixture_name]()
-        ep_id = data["episode_id"]
+        if fixture_name in FIXTURES:
+            data = FIXTURES[fixture_name]()
+            ep_id = data["episode_id"]
+        else:
+            ep_id = fixture_name
 
         json_path = self.artifacts_root / f"{fixture_name}_shooting_script.json"
         md_path = self.artifacts_root / f"{fixture_name}_shooting_script.md"
@@ -358,14 +407,165 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
             "markdown": md_text,
         })
 
-    def _handle_stream_video(self, fixture_name: str) -> None:
-        """Stream video MP4 file with HTTP 206 Partial Content Byte Range support."""
-        if fixture_name not in FIXTURES:
-            self._send_error_json(f"Fixture '{fixture_name}' not found", status=404)
+    def _handle_post_create_episode(self, payload: dict[str, Any]) -> None:
+        """Create and produce a new documentary episode for an arbitrary topic."""
+        topic = payload.get("topic", "").strip()
+        if not topic:
+            self._send_error_json("topic is required", status=400)
             return
 
-        data = FIXTURES[fixture_name]()
-        ep_id = data["episode_id"]
+        episode_id = payload.get("episode_id", "").strip()
+        if not episode_id:
+            episode_id = re.sub(r"[^\w\s-]", "", topic.lower())
+            episode_id = re.sub(r"[-\s]+", "_", episode_id).strip("_")
+            if not episode_id:
+                episode_id = f"ep_{int(time.time())}"
+
+        script_text = payload.get("script_text", "").strip()
+        media_provider = payload.get("media_provider", "wikimedia")
+        audio_provider = payload.get("audio_provider", "silence")
+        ai_provider = payload.get("ai_provider", "gemini")
+        mode = payload.get("mode", "final")
+        auto_render = bool(payload.get("auto_render", True))
+        voice = payload.get("voice", "vi-VN-HoaiMyNeural")
+
+        job_id = f"job_{int(time.time() * 1000)}_create_{episode_id}"
+        desc = f"Auto Vox Pipeline: {topic} ({episode_id})"
+        job_state = JobState(job_id=job_id, command_desc=desc)
+
+        with JOBS_LOCK:
+            JOBS[job_id] = job_state
+
+        def _worker() -> None:
+            job_state.append_log("================================================================================")
+            job_state.append_log(f"🚀 AUTO VOX PRODUCTION PIPELINE: {topic}")
+            job_state.append_log(f"   Episode ID:     {episode_id}")
+            job_state.append_log(f"   Media Provider: {media_provider}")
+            job_state.append_log(f"   Audio Provider: {audio_provider}")
+            job_state.append_log(f"   AI Provider:    {ai_provider}")
+            job_state.append_log("================================================================================")
+
+            try:
+                from videotool.domain.narration import Narration, synthetic_word_timings
+                from videotool.pipeline.narration_intake import NarrationIntakeService
+                from videotool.pipeline.runner import PipelineRunner, EpisodeInput
+                from videotool.editorial.media import MediaAcquisitionConfig
+                from videotool.pipeline.policy import ExecutionPolicy
+
+                # 1. Narration Intake
+                if not script_text:
+                    job_state.append_log(f"📝 [1/4] Đang nghiên cứu & biên soạn kịch bản lời bình với AI ({ai_provider})...")
+                    intake_svc = NarrationIntakeService(
+                        writer_provider_name=ai_provider,
+                        verifier_provider_name=ai_provider,
+                        mode=mode,
+                        allow_uncertain_claims=True,
+                    )
+                    narration, fact_report = intake_svc.process(topic=topic)
+                    job_state.append_log(f"✓ Lời bình hoàn tất: {len(narration.text.split())} từ, {len(fact_report.claims)} sự kiện kiểm chứng")
+                else:
+                    job_state.append_log(f"📝 [1/4] Sử dụng kịch bản lời bình do người dùng nhập ({len(script_text.split())} từ)...")
+                    narration = Narration(text=script_text, words=synthetic_word_timings(script_text))
+
+                # Save meta.json and narration.json
+                ep_dir = self.store.episode_dir(episode_id)
+                ep_dir.mkdir(parents=True, exist_ok=True)
+                meta_data = {
+                    "episode_id": episode_id,
+                    "topic": topic,
+                    "title": topic,
+                    "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    "media_provider": media_provider,
+                    "audio_provider": audio_provider,
+                }
+                (ep_dir / "meta.json").write_text(json.dumps(meta_data, indent=2, ensure_ascii=False), encoding="utf-8")
+                self.store.save(episode_id, "narration", narration.to_dict())
+
+                # 2. Planning Pipeline
+                job_state.append_log(f"⚙️ [2/4] Chạy Planning Pipeline (Bố cục, Bàn cắt dán, Tư liệu: {media_provider})...")
+                media_config = MediaAcquisitionConfig(provider=media_provider)
+                policy = ExecutionPolicy(
+                    mode=mode,
+                    editorial_ai_enabled=True,
+                    editorial_ai_provider=ai_provider,
+                )
+                runner = PipelineRunner(self.store, policy=policy, media_config=media_config)
+                ep_input = EpisodeInput(
+                    episode_id=episode_id,
+                    subject=topic,
+                    narration=narration,
+                    catalog=[],
+                )
+                res = runner.run(ep_input)
+                job_state.append_log(f"✓ Planning hoàn tất: {len(res.beats)} Beats, {len(res.compositions)} Visual Compositions (Status: {res.ok})")
+
+                # 3. Generate Shooting Script
+                job_state.append_log("📋 [3/4] Xuất Shooting Script 13 cột (JSON & Markdown)...")
+                from videotool.render.frame_plan import build_episode_frame_plan
+                from videotool.render.shooting_script import generate_shooting_script
+
+                timeline = self.store.load(episode_id, "timeline")
+                geo_plans = self.store.load(episode_id, "semantic_geometry") or []
+                motion_plan = self.store.load(episode_id, "motion_plan") or {}
+                media_assets = self.store.load(episode_id, "media_assets") or []
+                visual_comps = self.store.load(episode_id, "visual_compositions") or []
+                art_dir = self.store.load(episode_id, "episode_art_direction") or {}
+                semantic_beats = self.store.load(episode_id, "semantic_beats") or []
+                editorial_intents = self.store.load(episode_id, "editorial_intents") or {}
+                editorial_overrides = self.store.load(episode_id, "editorial_overrides") or []
+
+                plan = build_episode_frame_plan(
+                    timeline=timeline,
+                    geometry_plans=geo_plans,
+                    motion_plan=motion_plan,
+                    media_assets=media_assets,
+                    visual_compositions=visual_comps,
+                    art_direction=art_dir,
+                    semantic_beats=semantic_beats,
+                    editorial_intents=editorial_intents,
+                    editorial_overrides=editorial_overrides,
+                )
+                json_path = self.artifacts_root / f"{episode_id}_shooting_script.json"
+                md_path = self.artifacts_root / f"{episode_id}_shooting_script.md"
+                generate_shooting_script(plan, timeline, semantic_beats, geo_plans, media_assets, visual_comps, json_path, md_path)
+                job_state.append_log(f"✓ Shooting script đã xuất: {json_path.name}")
+
+                # 4. Optional Render
+                if auto_render:
+                    job_state.append_log("🎬 [4/4] Render Video MP4 phong cách Vox (FFmpeg & Beat Cache)...")
+                    from videotool.render import render_episode
+                    out_mp4 = self.artifacts_root / f"{episode_id}.mp4"
+                    render_res = render_episode(
+                        episode_id=episode_id,
+                        store=self.store,
+                        output_path=out_mp4,
+                        audio_provider_name=audio_provider if audio_provider != "none" else None,
+                        voice=voice,
+                    )
+                    job_state.append_log(f"🎉 RENDER HOÀN TẤT: {out_mp4.name} (Thời lượng: {render_res.duration_sec:.2f}s, Beats: {render_res.metadata.get('beats_rendered')})")
+
+                job_state.append_log("================================================================================")
+                job_state.append_log(f"✨ TẬP PHIM ĐÃ SẴN SÀNG! Vui lòng chọn '{episode_id}' trên thanh menu để xem.")
+                job_state.append_log("================================================================================")
+                job_state.finish(0)
+            except Exception as e:
+                import traceback
+                job_state.append_log(f"❌ Pipeline failed: {e}")
+                job_state.append_log(traceback.format_exc())
+                job_state.finish(1)
+
+        thread = threading.Thread(target=_worker, daemon=True)
+        thread.start()
+
+        self._send_json({"success": True, "episode_id": episode_id, "job_id": job_id})
+
+    def _handle_stream_video(self, fixture_name: str) -> None:
+        """Stream video MP4 file with HTTP 206 Partial Content Byte Range support."""
+        if fixture_name in FIXTURES:
+            ep_id = FIXTURES[fixture_name]()["episode_id"]
+        else:
+            ep_id = fixture_name
+
         video_path = _get_episode_video_path(self.artifacts_root, ep_id, fixture_name)
 
         if not video_path or not video_path.is_file():
@@ -415,11 +615,11 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
             shutil.copyfileobj(f, self.wfile)
 
     def _handle_get_overrides(self, fixture_name: str) -> None:
-        if fixture_name not in FIXTURES:
-            self._send_error_json(f"Fixture '{fixture_name}' not found", status=404)
-            return
-        data = FIXTURES[fixture_name]()
-        ep_id = data["episode_id"]
+        if fixture_name in FIXTURES:
+            ep_id = FIXTURES[fixture_name]()["episode_id"]
+        else:
+            ep_id = fixture_name
+
         overrides = self.store.load(ep_id, "editorial_overrides") or []
         self._send_json({"episode_id": ep_id, "overrides": overrides})
 
@@ -454,15 +654,17 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
         feedback_text = payload.get("feedback_text", "").strip()
         provider = payload.get("provider", "mock")
 
-        if fixture_name not in FIXTURES:
-            self._send_error_json(f"Fixture '{fixture_name}' not found", status=404)
+        if fixture_name in FIXTURES:
+            ep_id = FIXTURES[fixture_name]()["episode_id"]
+        elif (self.store.episode_dir(fixture_name)).is_dir():
+            ep_id = fixture_name
+        else:
+            self._send_error_json(f"Episode '{fixture_name}' not found", status=404)
             return
+
         if not feedback_text:
             self._send_error_json("feedback_text is required", status=400)
             return
-
-        data = FIXTURES[fixture_name]()
-        ep_id = data["episode_id"]
 
         try:
             service = RevisionService(provider_name=provider)
@@ -479,15 +681,17 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
         fixture_name = payload.get("fixture") or (next(iter(FIXTURES)) if FIXTURES else "")
         proposal_id = payload.get("proposal_id", "").strip()
 
-        if fixture_name not in FIXTURES:
-            self._send_error_json(f"Fixture '{fixture_name}' not found", status=404)
+        if fixture_name in FIXTURES:
+            ep_id = FIXTURES[fixture_name]()["episode_id"]
+        elif (self.store.episode_dir(fixture_name)).is_dir():
+            ep_id = fixture_name
+        else:
+            self._send_error_json(f"Episode '{fixture_name}' not found", status=404)
             return
+
         if not proposal_id:
             self._send_error_json("proposal_id is required", status=400)
             return
-
-        data = FIXTURES[fixture_name]()
-        ep_id = data["episode_id"]
 
         try:
             service = RevisionService(provider_name="mock")
@@ -501,16 +705,15 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
             self._send_error_json(f"Apply error: {exc}", status=500)
 
     def _handle_post_delete_override(self, fixture_name: str, payload: dict[str, Any]) -> None:
-        if fixture_name not in FIXTURES:
-            self._send_error_json(f"Fixture '{fixture_name}' not found", status=404)
-            return
+        if fixture_name in FIXTURES:
+            ep_id = FIXTURES[fixture_name]()["episode_id"]
+        else:
+            ep_id = fixture_name
+
         override_id = payload.get("override_id")
         if not override_id:
             self._send_error_json("override_id is required", status=400)
             return
-
-        data = FIXTURES[fixture_name]()
-        ep_id = data["episode_id"]
 
         overrides = self.store.load(ep_id, "editorial_overrides") or []
         new_overrides = [ovr for ovr in overrides if ovr.get("override_id") != override_id]

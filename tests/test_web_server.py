@@ -185,3 +185,32 @@ def test_command_execution_api(running_server):
     assert status == 200
     assert "status" in job_data
     assert "lines" in job_data
+
+
+def test_create_custom_topic_episode_api(running_server):
+    base_url, artifacts_dir, _ = running_server
+
+    # Create new custom episode
+    status, res = _post(f"{base_url}/api/episodes/create", {
+        "topic": "The Sinking of the Titanic 1912",
+        "episode_id": "test_titanic",
+        "script_text": "In 1912 the Titanic collided with an iceberg and sank into the freezing Atlantic ocean.",
+        "media_provider": "fixture",
+        "audio_provider": "silence",
+        "ai_provider": "mock",
+        "auto_render": False,
+    })
+    assert status == 200
+    assert res["success"] is True
+    assert res["episode_id"] == "test_titanic"
+    assert "job_id" in res
+
+    # Wait for background job to finish
+    time.sleep(1.5)
+
+    # Check that custom episode appears in /api/episodes
+    status, ep_data, _ = _get(f"{base_url}/api/episodes")
+    assert status == 200
+    ep_ids = [ep["episode_id"] for ep in ep_data["episodes"]]
+    assert "test_titanic" in ep_ids
+

@@ -37,6 +37,10 @@
         </select>
       </div>
 
+      <button id="btnNewProject" class="btn btn-accent btn-sm">
+        ➕ Tạo Dự Án Mới
+      </button>
+
       <button id="btnRefresh" class="btn btn-secondary btn-sm" title="Làm mới toàn bộ dữ liệu">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
         Làm mới
@@ -422,6 +426,111 @@
     </div>
 
   </main>
+
+  <!-- Modal: Tạo Dự Án Mới (New Project Topic) -->
+  <div id="modalNewProject" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-title-group">
+          <span class="modal-icon">🎬</span>
+          <h2 class="modal-heading">Tạo Dự Án Video Mới (Bất Kỳ Chủ Đề Nào)</h2>
+        </div>
+        <button id="btnCloseModal" class="btn-close" title="Đóng modal">&times;</button>
+      </div>
+
+      <form id="formNewProject" class="modal-body">
+        <div class="form-group">
+          <label class="form-label" for="inputTopic">Chủ đề / Tiêu đề phim (Topic / Title): <span class="text-coral">*</span></label>
+          <input type="text" id="inputTopic" class="form-input" placeholder="Ví dụ: Thảm họa Chìm tàu Titanic năm 1912 (The Sinking of the Titanic)" required>
+          <span class="form-hint">Nhập bất kỳ chủ đề tài liệu lịch sử, khoa học, nhân vật, sự kiện nào bạn muốn sản xuất.</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="inputEpId">Mã định danh dự án (Episode ID): <span class="text-coral">*</span></label>
+          <input type="text" id="inputEpId" class="form-input" placeholder="titanic_1912" required pattern="[a-zA-Z0-9_-]+">
+          <span class="form-hint">Chỉ gồm chữ cái thường, số và dấu gạch dưới (tự động tạo từ tiêu đề).</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Chế độ Lời bình (Narration Script):</label>
+          <div class="radio-tab-group">
+            <label class="radio-card active" id="lblScriptAi">
+              <input type="radio" name="scriptMode" value="ai" checked>
+              <div class="radio-text">
+                <strong>✨ AI Tự động biên soạn & Kiểm chứng sự kiện</strong>
+                <small>AI nghiên cứu dữ liệu lịch sử, trích xuất thực thể và kiểm tra tính xác thực</small>
+              </div>
+            </label>
+            <label class="radio-card" id="lblScriptCustom">
+              <input type="radio" name="scriptMode" value="custom">
+              <div class="radio-text">
+                <strong>📝 Tự nhập kịch bản lời bình của bạn</strong>
+                <small>Nhập trực tiếp các câu thuyết minh bạn đã chuẩn bị</small>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div id="customScriptBox" class="form-group hidden">
+          <label class="form-label" for="textareaScript">Nội dung kịch bản lời bình (Tiếng Anh hoặc Tiếng Việt):</label>
+          <textarea id="textareaScript" class="form-textarea" rows="5" placeholder="Nhập từng câu narration... Ví dụ: In the early hours of April 15, 1912, the British passenger liner RMS Titanic sank in the North Atlantic Ocean. Over 1,500 people perished in one of history's deadliest peacetime commercial marine disasters."></textarea>
+        </div>
+
+        <div class="form-row-2">
+          <div class="form-group">
+            <label class="form-label" for="selectMediaProvider">Nguồn tư liệu ảnh:</label>
+            <select id="selectMediaProvider" class="form-select">
+              <option value="wikimedia" selected>🌐 Wikimedia Commons (Tìm & tải ảnh thật)</option>
+              <option value="fixture">📁 Fixture Cục bộ</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="selectAudioProvider">Âm thanh & Giọng đọc:</label>
+            <select id="selectAudioProvider" class="form-select">
+              <option value="silence" selected>🔇 Silence (Tạo nhịp điệu & Click track)</option>
+              <option value="azure">🎙️ Azure Speech TTS (Giọng đọc AI)</option>
+              <option value="none">❌ Không âm thanh</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row-2">
+          <div class="form-group">
+            <label class="form-label" for="selectAiProvider">AI Editorial Provider:</label>
+            <select id="selectAiProvider" class="form-select">
+              <option value="gemini" selected>🤖 Gemini Pro (AI Thật)</option>
+              <option value="mock">🧪 Mock Provider</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="selectVoice">Giọng đọc (nếu dùng Azure):</label>
+            <select id="selectVoice" class="form-select">
+              <option value="vi-VN-HoaiMyNeural" selected>🇻🇳 vi-VN-HoaiMyNeural (Nữ)</option>
+              <option value="vi-VN-NamMinhNeural">🇻🇳 vi-VN-NamMinhNeural (Nam)</option>
+              <option value="en-US-JennyNeural">🇺🇸 en-US-JennyNeural (Nữ)</option>
+              <option value="en-US-GuyNeural">🇺🇸 en-US-GuyNeural (Nam)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group checkbox-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="checkAutoRender" checked>
+            <span>⚡ <strong>Tự động Render Video MP4</strong> ngay sau khi hoàn tất Planning</span>
+          </label>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" id="btnCancelModal" class="btn btn-secondary">Hủy bỏ</button>
+          <button type="submit" id="btnSubmitCreate" class="btn btn-accent">
+            🚀 Bắt Đầu Sản Xuất Video Thật (1-Click Auto Vox Pipeline)
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <script src="/app.js"></script>
 </body>
