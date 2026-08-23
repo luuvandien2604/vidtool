@@ -437,12 +437,13 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
             JOBS[job_id] = job_state
 
         def _worker() -> None:
+            active_ai = ai_provider
             job_state.append_log("================================================================================")
             job_state.append_log(f"🚀 AUTO VOX PRODUCTION PIPELINE: {topic}")
             job_state.append_log(f"   Episode ID:     {episode_id}")
             job_state.append_log(f"   Media Provider: {media_provider}")
             job_state.append_log(f"   Audio Provider: {audio_provider}")
-            job_state.append_log(f"   AI Provider:    {ai_provider}")
+            job_state.append_log(f"   AI Provider:    {active_ai}")
             job_state.append_log("================================================================================")
 
             try:
@@ -454,18 +455,18 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
 
                 # 1. Narration Intake
                 if not script_text:
-                    job_state.append_log(f"📝 [1/4] Đang nghiên cứu & biên soạn kịch bản lời bình với AI ({ai_provider})...")
+                    job_state.append_log(f"📝 [1/4] Đang nghiên cứu & biên soạn kịch bản lời bình với AI ({active_ai})...")
                     try:
                         intake_svc = NarrationIntakeService(
-                            writer_provider_name=ai_provider,
-                            verifier_provider_name=ai_provider,
+                            writer_provider_name=active_ai,
+                            verifier_provider_name=active_ai,
                             mode=mode,
                             allow_uncertain_claims=True,
                         )
                         narration, fact_report = intake_svc.process(topic=topic)
                         job_state.append_log(f"✓ Lời bình hoàn tất: {len(narration.text.split())} từ, {len(fact_report.claims)} sự kiện kiểm chứng")
                     except Exception as e:
-                        job_state.append_log(f"⚠️ AI {ai_provider} giới hạn quota ({e}). Tự động dùng Heuristic Script để hoàn tất...")
+                        job_state.append_log(f"⚠️ AI {active_ai} giới hạn quota ({e}). Tự động dùng Heuristic Script để hoàn tất...")
                         intake_svc = NarrationIntakeService(
                             writer_provider_name="mock",
                             verifier_provider_name="mock",
@@ -473,7 +474,7 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
                             allow_uncertain_claims=True,
                         )
                         narration, fact_report = intake_svc.process(topic=topic)
-                        ai_provider = "mock"
+                        active_ai = "mock"
                         job_state.append_log(f"✓ Lời bình hoàn tất: {len(narration.text.split())} từ")
                 else:
                     job_state.append_log(f"📝 [1/4] Sử dụng kịch bản lời bình do người dùng nhập ({len(script_text.split())} từ)...")
@@ -499,7 +500,7 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
                 policy = ExecutionPolicy(
                     mode=mode,
                     editorial_ai_enabled=True,
-                    editorial_ai_provider=ai_provider,
+                    editorial_ai_provider=active_ai,
                 )
                 runner = PipelineRunner(self.store, policy=policy, media_config=media_config)
                 ep_input = EpisodeInput(
