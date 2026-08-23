@@ -82,6 +82,13 @@ def main(argv: list[str] | None = None) -> int:
     render_parser.add_argument("--click-track", action="store_true",
                                help="emit audible tone pulses at beat boundaries (silence provider only)")
 
+    # Subcommand: serve
+    serve_parser = subparsers.add_parser("serve", help="start local VideoTool Web UI dashboard")
+    serve_parser.add_argument("--port", type=int, default=8080, help="server port (default: 8080)")
+    serve_parser.add_argument("--host", default="127.0.0.1", help="server host (default: 127.0.0.1)")
+    serve_parser.add_argument("--artifacts", default="artifacts", help="artifacts directory (default: artifacts)")
+    serve_parser.add_argument("--open", action="store_true", help="open dashboard in default web browser")
+
     # Subcommand: run (also default if fixture name passed directly)
     run_parser = subparsers.add_parser("run", help="run planning pipeline")
     run_parser.add_argument("fixture", choices=sorted(FIXTURES))
@@ -104,10 +111,20 @@ def main(argv: list[str] | None = None) -> int:
                             help="recompute every stage, ignoring cached artifacts")
 
     args_list = list(sys.argv[1:] if argv is None else argv)
-    if args_list and args_list[0] not in ("render", "run", "write-narration", "shooting-script", "revise", "-h", "--help"):
+    if args_list and args_list[0] not in ("render", "run", "write-narration", "shooting-script", "revise", "serve", "-h", "--help"):
         args_list.insert(0, "run")
 
     args = parser.parse_args(args_list)
+
+    if args.command == "serve":
+        from videotool.web import run_web_server
+        run_web_server(
+            host=args.host,
+            port=args.port,
+            artifacts_dir=args.artifacts,
+            open_browser=args.open,
+        )
+        return 0
 
     if args.command == "write-narration":
         from videotool.pipeline.narration_intake import NarrationIntakeService
