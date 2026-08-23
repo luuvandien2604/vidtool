@@ -375,6 +375,30 @@ class GeminiWebSearchFactVerifier:
         return all_verifications
 
 
+class MockFactVerificationProvider:
+    """Mock fact verification provider that validates claims without network requests."""
+    provider_id: str = "mock"
+
+    def verify(
+        self,
+        topic: str,
+        narration: Narration,
+        claims: list[FactualClaim],
+    ) -> list[ClaimVerification]:
+        verifications: list[ClaimVerification] = []
+        for c in claims:
+            verifications.append(
+                ClaimVerification(
+                    claim_id=c.claim_id,
+                    status=VerificationStatus.VERIFIED,
+                    confidence=0.95,
+                    source_urls=[f"https://en.wikipedia.org/wiki/{topic.replace(' ', '_')}"],
+                    note=f"Verified fact for {c.text}",
+                )
+            )
+        return verifications
+
+
 # Provider Registry
 FACT_VERIFICATION_PROVIDERS: dict[str, type] = {}
 
@@ -386,6 +410,7 @@ def register_fact_verifier(name: str, cls: type) -> None:
 
 register_fact_verifier("claude", ClaudeWebSearchFactVerifier)
 register_fact_verifier("gemini", GeminiWebSearchFactVerifier)
+register_fact_verifier("mock", MockFactVerificationProvider)
 
 
 def build_fact_verifier(name: str, **kwargs) -> FactVerificationProvider:
@@ -401,6 +426,7 @@ __all__ = [
     "FactVerificationProvider",
     "ClaudeWebSearchFactVerifier",
     "GeminiWebSearchFactVerifier",
+    "MockFactVerificationProvider",
     "FACT_VERIFICATION_PROVIDERS",
     "register_fact_verifier",
     "build_fact_verifier",

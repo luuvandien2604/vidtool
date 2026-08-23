@@ -300,6 +300,39 @@ class GeminiNarrationWriterProvider:
         return narration, claims
 
 
+class MockNarrationWriterProvider:
+    """Mock narration writer that generates structured narrative sentences and claims without calling external APIs."""
+    provider_id: str = "mock"
+
+    def write(
+        self,
+        topic: str,
+        target_duration_sec: float | None = None,
+        language: str = "en",
+    ) -> tuple[Narration, list[FactualClaim]]:
+        from videotool.domain.narration import synthetic_word_timings
+        
+        topic_clean = topic.strip()
+        
+        # Build multi-sentence documentary voiceover script
+        sentences = [
+            f"This documentary explores the profound history and legacy of {topic_clean}.",
+            f"Key events unfolded rapidly as pivotal moments shaped the course of {topic_clean}.",
+            f"Archival records document the strategic decisions and critical milestones achieved.",
+            f"The lasting impact of {topic_clean} continues to influence our understanding of history today.",
+        ]
+        full_text = " ".join(sentences)
+        words = synthetic_word_timings(full_text)
+        narration = Narration(text=full_text, words=words)
+
+        claims_raw = [
+            {"claim_id": "claim_001", "text": topic_clean, "claim_type": "TOPIC"},
+            {"claim_id": "claim_002", "text": "Archival records document the strategic decisions", "claim_type": "EVENT"},
+        ]
+        claims = calculate_claim_spans(full_text, claims_raw)
+        return narration, claims
+
+
 # Provider Registry
 NARRATION_WRITER_PROVIDERS: dict[str, type] = {}
 
@@ -311,6 +344,7 @@ def register_narration_writer(name: str, cls: type) -> None:
 
 register_narration_writer("claude", ClaudeNarrationWriterProvider)
 register_narration_writer("gemini", GeminiNarrationWriterProvider)
+register_narration_writer("mock", MockNarrationWriterProvider)
 
 
 def build_narration_writer(name: str, **kwargs) -> NarrationWriterProvider:
@@ -327,6 +361,7 @@ __all__ = [
     "calculate_claim_spans",
     "ClaudeNarrationWriterProvider",
     "GeminiNarrationWriterProvider",
+    "MockNarrationWriterProvider",
     "NARRATION_WRITER_PROVIDERS",
     "register_narration_writer",
     "build_narration_writer",
