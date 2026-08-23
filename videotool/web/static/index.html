@@ -428,28 +428,24 @@
   </main>
 
   <!-- Modal: Tạo Dự Án Mới (New Project Topic) -->
-  <div id="modalNewProject" class="modal-overlay hidden">
+  <div id="modalNewProject" class="modal-overlay hidden" onclick="if(event.target===this)this.classList.add('hidden');">
     <div class="modal-card">
       <div class="modal-head">
         <div class="modal-title-group">
           <span class="modal-icon">🎬</span>
           <h2 class="modal-heading">Tạo Dự Án Video Mới (Bất Kỳ Chủ Đề Nào)</h2>
         </div>
-        <button id="btnCloseModal" class="btn-close" title="Đóng modal">&times;</button>
+        <button id="btnCloseModal" type="button" class="btn-close" title="Đóng cửa sổ" onclick="document.getElementById('modalNewProject').classList.add('hidden');">&times;</button>
       </div>
 
       <form id="formNewProject" class="modal-body">
         <div class="form-group">
-          <label class="form-label" for="inputTopic">Chủ đề / Tiêu đề phim (Topic / Title): <span class="text-coral">*</span></label>
-          <input type="text" id="inputTopic" class="form-input" placeholder="Ví dụ: Thảm họa Chìm tàu Titanic năm 1912 (The Sinking of the Titanic)" required>
-          <span class="form-hint">Nhập bất kỳ chủ đề tài liệu lịch sử, khoa học, nhân vật, sự kiện nào bạn muốn sản xuất.</span>
+          <label class="form-label" for="inputTopic">Chủ đề / Tiêu đề phim bạn muốn làm: <span class="text-coral">*</span></label>
+          <input type="text" id="inputTopic" class="form-input" placeholder="Ví dụ: Thảm họa chìm tàu Titanic năm 1912" required autofocus autocomplete="off">
+          <span class="form-hint">Hệ thống sẽ tự động tạo mã định danh, nghiên cứu tài liệu lịch sử, tìm ảnh và sản xuất video.</span>
         </div>
 
-        <div class="form-group">
-          <label class="form-label" for="inputEpId">Mã định danh dự án (Episode ID): <span class="text-coral">*</span></label>
-          <input type="text" id="inputEpId" class="form-input" placeholder="titanic_1912" required pattern="[a-zA-Z0-9_-]+">
-          <span class="form-hint">Chỉ gồm chữ cái thường, số và dấu gạch dưới (tự động tạo từ tiêu đề).</span>
-        </div>
+        <input type="hidden" id="inputEpId" value="">
 
         <div class="form-group">
           <label class="form-label">Chế độ Lời bình (Narration Script):</label>
@@ -471,9 +467,9 @@
           </div>
         </div>
 
-        <div id="customScriptBox" class="form-group hidden">
+        <div id="customScriptBox" class="form-group hidden" style="display: none;">
           <label class="form-label" for="textareaScript">Nội dung kịch bản lời bình (Tiếng Anh hoặc Tiếng Việt):</label>
-          <textarea id="textareaScript" class="form-textarea" rows="5" placeholder="Nhập từng câu narration... Ví dụ: In the early hours of April 15, 1912, the British passenger liner RMS Titanic sank in the North Atlantic Ocean. Over 1,500 people perished in one of history's deadliest peacetime commercial marine disasters."></textarea>
+          <textarea id="textareaScript" class="form-textarea" rows="4" placeholder="Nhập từng câu narration... Ví dụ: In the early hours of April 15, 1912, the British passenger liner RMS Titanic sank in the North Atlantic Ocean. Over 1,500 people perished in one of history's deadliest peacetime commercial marine disasters."></textarea>
         </div>
 
         <div class="form-row-2">
@@ -523,7 +519,7 @@
         </div>
 
         <div class="modal-actions">
-          <button type="button" id="btnCancelModal" class="btn btn-secondary">Hủy bỏ</button>
+          <button type="button" id="btnCancelModal" class="btn btn-secondary" onclick="document.getElementById('modalNewProject').classList.add('hidden');">Hủy bỏ</button>
           <button type="submit" id="btnSubmitCreate" class="btn btn-accent">
             🚀 Bắt Đầu Sản Xuất Video Thật (1-Click Auto Vox Pipeline)
           </button>

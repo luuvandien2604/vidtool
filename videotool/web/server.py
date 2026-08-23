@@ -455,14 +455,26 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
                 # 1. Narration Intake
                 if not script_text:
                     job_state.append_log(f"📝 [1/4] Đang nghiên cứu & biên soạn kịch bản lời bình với AI ({ai_provider})...")
-                    intake_svc = NarrationIntakeService(
-                        writer_provider_name=ai_provider,
-                        verifier_provider_name=ai_provider,
-                        mode=mode,
-                        allow_uncertain_claims=True,
-                    )
-                    narration, fact_report = intake_svc.process(topic=topic)
-                    job_state.append_log(f"✓ Lời bình hoàn tất: {len(narration.text.split())} từ, {len(fact_report.claims)} sự kiện kiểm chứng")
+                    try:
+                        intake_svc = NarrationIntakeService(
+                            writer_provider_name=ai_provider,
+                            verifier_provider_name=ai_provider,
+                            mode=mode,
+                            allow_uncertain_claims=True,
+                        )
+                        narration, fact_report = intake_svc.process(topic=topic)
+                        job_state.append_log(f"✓ Lời bình hoàn tất: {len(narration.text.split())} từ, {len(fact_report.claims)} sự kiện kiểm chứng")
+                    except Exception as e:
+                        job_state.append_log(f"⚠️ AI {ai_provider} giới hạn quota ({e}). Tự động dùng Heuristic Script để hoàn tất...")
+                        intake_svc = NarrationIntakeService(
+                            writer_provider_name="mock",
+                            verifier_provider_name="mock",
+                            mode=mode,
+                            allow_uncertain_claims=True,
+                        )
+                        narration, fact_report = intake_svc.process(topic=topic)
+                        ai_provider = "mock"
+                        job_state.append_log(f"✓ Lời bình hoàn tất: {len(narration.text.split())} từ")
                 else:
                     job_state.append_log(f"📝 [1/4] Sử dụng kịch bản lời bình do người dùng nhập ({len(script_text.split())} từ)...")
                     narration = Narration(text=script_text, words=synthetic_word_timings(script_text))

@@ -642,29 +642,54 @@
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9 ]/g, '')
-      .replace(/\s+/g, '_');
+      .replace(/\s+/g, '_')
+      .slice(0, 40);
   }
 
   function openNewProjectModal() {
-    el.inputTopic.value = '';
-    el.inputEpId.value = '';
-    el.textareaScript.value = '';
-    el.modalNewProject.classList.remove('hidden');
-    el.inputTopic.focus();
+    if (el.inputTopic) el.inputTopic.value = '';
+    if (el.inputEpId) el.inputEpId.value = '';
+    if (el.textareaScript) el.textareaScript.value = '';
+    if (el.customScriptBox) {
+      el.customScriptBox.classList.add('hidden');
+      el.customScriptBox.style.display = 'none';
+    }
+    if (el.lblScriptAi) el.lblScriptAi.classList.add('active');
+    if (el.lblScriptCustom) el.lblScriptCustom.classList.remove('active');
+    
+    const radioAi = document.querySelector('input[name="scriptMode"][value="ai"]');
+    if (radioAi) radioAi.checked = true;
+
+    if (el.modalNewProject) {
+      el.modalNewProject.classList.remove('hidden');
+    }
+    if (el.inputTopic) {
+      setTimeout(() => el.inputTopic.focus(), 50);
+    }
   }
 
   function closeNewProjectModal() {
-    el.modalNewProject.classList.add('hidden');
+    if (el.modalNewProject) {
+      el.modalNewProject.classList.add('hidden');
+    }
   }
 
   if (el.btnNewProject) {
     el.btnNewProject.addEventListener('click', openNewProjectModal);
   }
   if (el.btnCloseModal) {
-    el.btnCloseModal.addEventListener('click', closeNewProjectModal);
+    el.btnCloseModal.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeNewProjectModal();
+    });
   }
   if (el.btnCancelModal) {
-    el.btnCancelModal.addEventListener('click', closeNewProjectModal);
+    el.btnCancelModal.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeNewProjectModal();
+    });
   }
   if (el.modalNewProject) {
     el.modalNewProject.addEventListener('click', (e) => {
@@ -672,27 +697,31 @@
     });
   }
 
-  // Auto-slugify topic to epId
-  if (el.inputTopic) {
-    el.inputTopic.addEventListener('input', () => {
-      const topic = el.inputTopic.value;
-      el.inputEpId.value = slugify(topic);
-    });
-  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && el.modalNewProject && !el.modalNewProject.classList.contains('hidden')) {
+      closeNewProjectModal();
+    }
+  });
 
   // Radio Tab Toggle for Script Mode
   const scriptRadioButtons = document.querySelectorAll('input[name="scriptMode"]');
   scriptRadioButtons.forEach(radio => {
     radio.addEventListener('change', () => {
       if (radio.value === 'custom') {
-        el.customScriptBox.classList.remove('hidden');
-        el.lblScriptCustom.classList.add('active');
-        el.lblScriptAi.classList.remove('active');
-        el.textareaScript.focus();
+        if (el.customScriptBox) {
+          el.customScriptBox.classList.remove('hidden');
+          el.customScriptBox.style.display = 'block';
+        }
+        if (el.lblScriptCustom) el.lblScriptCustom.classList.add('active');
+        if (el.lblScriptAi) el.lblScriptAi.classList.remove('active');
+        if (el.textareaScript) el.textareaScript.focus();
       } else {
-        el.customScriptBox.classList.add('hidden');
-        el.lblScriptAi.classList.add('active');
-        el.lblScriptCustom.classList.remove('active');
+        if (el.customScriptBox) {
+          el.customScriptBox.classList.add('hidden');
+          el.customScriptBox.style.display = 'none';
+        }
+        if (el.lblScriptAi) el.lblScriptAi.classList.add('active');
+        if (el.lblScriptCustom) el.lblScriptCustom.classList.remove('active');
       }
     });
   });
@@ -701,27 +730,33 @@
   if (el.formNewProject) {
     el.formNewProject.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const topic = el.inputTopic.value.trim();
-      if (!topic) return;
+      const topic = el.inputTopic ? el.inputTopic.value.trim() : '';
+      if (!topic) {
+        alert('Vui lòng nhập chủ đề / tiêu đề phim bạn muốn làm!');
+        if (el.inputTopic) el.inputTopic.focus();
+        return;
+      }
 
-      const epId = el.inputEpId.value.trim() || slugify(topic) || `ep_${Date.now()}`;
+      // Auto generate slug silently from topic or timestamp
+      const epId = slugify(topic) || `ep_${Date.now()}`;
       const scriptRadio = document.querySelector('input[name="scriptMode"]:checked');
       const scriptMode = scriptRadio ? scriptRadio.value : 'ai';
-      const scriptText = scriptMode === 'custom' ? el.textareaScript.value.trim() : '';
-      const mediaProvider = el.selectMediaProvider.value;
-      const audioProvider = el.selectAudioProvider.value;
-      const aiProvider = el.selectAiProvider.value;
-      const voice = el.selectVoice.value;
-      const autoRender = el.checkAutoRender.checked;
+      const scriptText = (scriptMode === 'custom' && el.textareaScript) ? el.textareaScript.value.trim() : '';
+      const mediaProvider = el.selectMediaProvider ? el.selectMediaProvider.value : 'wikimedia';
+      const audioProvider = el.selectAudioProvider ? el.selectAudioProvider.value : 'silence';
+      const aiProvider = el.selectAiProvider ? el.selectAiProvider.value : 'gemini';
+      const voice = el.selectVoice ? el.selectVoice.value : 'vi-VN-HoaiMyNeural';
+      const autoRender = el.checkAutoRender ? el.checkAutoRender.checked : true;
 
+      // Close modal immediately and return to console / main view
       closeNewProjectModal();
       switchToTab('tabTerminal');
 
       logTerminal(`================================================================================`, 'cmd');
       logTerminal(`🚀 BẮT ĐẦU SẢN XUẤT TẬP PHIM: "${topic}"`, 'cmd');
-      logTerminal(`   Mã định danh:   ${epId}`, 'info');
-      logTerminal(`   Kịch bản:       ${scriptMode === 'ai' ? 'AI Tự động nghiên cứu' : 'Nhập thủ công (' + scriptText.length + ' ký tự)'}`, 'info');
-      logTerminal(`   Nguồn ảnh:      ${mediaProvider} | Âm thanh: ${audioProvider}`, 'info');
+      logTerminal(`   Mã định danh tự tạo:  ${epId}`, 'info');
+      logTerminal(`   Kịch bản lời bình:    ${scriptMode === 'ai' ? 'AI Tự động nghiên cứu & kiểm chứng' : 'Nhập thủ công (' + scriptText.length + ' ký tự)'}`, 'info');
+      logTerminal(`   Nguồn ảnh tư liệu:    ${mediaProvider} | Âm thanh: ${audioProvider}`, 'info');
       logTerminal(`================================================================================`, 'cmd');
 
       el.jobStatusPill.textContent = 'Đang chạy Auto Vox Pipeline...';
@@ -763,6 +798,7 @@
           await loadEpisodeStatus();
           await loadShootingScript();
           switchToTab('tabStudio');
+          logTerminal(`🎉 Tập phim "${topic}" đã sẵn sàng trên màn hình Studio!`, 'success');
         });
       } catch (err) {
         logTerminal(`❌ Lỗi mạng: ${err.message}`, 'error');
