@@ -36,13 +36,18 @@ def test_live_gemini_narration_writer_and_fact_verifier(tmp_path):
     )
 
     topic = "The Fall of the Berlin Wall in November 1989"
-    narration, report = service.process(
-        topic=topic,
-        target_duration_sec=45.0,
-        language="en",
-        out_narration_path=out_narr,
-        out_report_path=out_rep,
-    )
+    try:
+        narration, report = service.process(
+            topic=topic,
+            target_duration_sec=45.0,
+            language="en",
+            out_narration_path=out_narr,
+            out_report_path=out_rep,
+        )
+    except Exception as exc:
+        if "429" in str(exc) or "quota" in str(exc).lower() or "RESOURCE_EXHAUSTED" in str(exc):
+            pytest.skip(f"Gemini API rate limited / quota exhausted: {exc}")
+        raise
 
     print(f"\n[LIVE TEST] Topic: {topic}")
     print(f"[LIVE TEST] Narration text ({len(narration.text.split())} words):\n{narration.text}\n")
@@ -81,13 +86,18 @@ def test_live_claude_narration_writer_and_fact_verifier(tmp_path):
     )
 
     topic = "Apollo 11 Moon Landing July 1969"
-    narration, report = service.process(
-        topic=topic,
-        target_duration_sec=40.0,
-        language="en",
-        out_narration_path=out_narr,
-        out_report_path=out_rep,
-    )
+    try:
+        narration, report = service.process(
+            topic=topic,
+            target_duration_sec=40.0,
+            language="en",
+            out_narration_path=out_narr,
+            out_report_path=out_rep,
+        )
+    except Exception as exc:
+        if "429" in str(exc) or "quota" in str(exc).lower() or "overloaded" in str(exc).lower():
+            pytest.skip(f"Claude API rate limited / quota exhausted: {exc}")
+        raise
 
     print(f"\n[LIVE CLAUDE TEST] Topic: {topic}")
     print(f"[LIVE CLAUDE TEST] Total claims: {report.total_claims}")
