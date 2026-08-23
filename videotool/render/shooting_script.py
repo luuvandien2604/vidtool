@@ -1,9 +1,9 @@
 """Shooting script generator (Phase 3A / AI Editorial Director).
 
 Produces two synced artifacts:
-1. shooting_script.yaml - machine-readable source of truth containing every element per beat
+1. shooting_script.json - machine-readable source of truth containing every element per beat
    with real timestamps, coordinates, motion, source tracking ([raw] vs [ai_authored]), and asset links.
-2. shooting_script.md - human-readable 13-column markdown table generated directly from the YAML.
+2. shooting_script.md - human-readable 13-column markdown table generated directly from the script data.
 """
 from __future__ import annotations
 
@@ -11,11 +11,6 @@ import datetime
 import json
 from pathlib import Path
 from typing import Any
-
-try:
-    import yaml
-except ImportError:
-    yaml = None
 
 from videotool.render.frame_plan import (
     BeatFramePlan,
@@ -252,10 +247,11 @@ def generate_shooting_script(
     geometry_plans: list[dict[str, Any]] | None = None,
     media_assets: list[dict[str, Any]] | None = None,
     visual_compositions: list[dict[str, Any]] | None = None,
-    out_yaml_path: str | Path | None = None,
+    out_json_path: str | Path | None = None,
     out_md_path: str | Path | None = None,
+    out_yaml_path: str | Path | None = None,  # Legacy alias redirected to JSON
 ) -> tuple[dict[str, Any], str]:
-    """Generate both shooting_script.yaml and shooting_script.md files."""
+    """Generate both shooting_script.json and shooting_script.md files."""
     script_data = build_shooting_script_data(
         plan=plan,
         timeline=timeline,
@@ -267,15 +263,12 @@ def generate_shooting_script(
 
     md_content = render_shooting_script_markdown(script_data)
 
-    if out_yaml_path:
-        p_yaml = Path(out_yaml_path)
-        p_yaml.parent.mkdir(parents=True, exist_ok=True)
-        with open(p_yaml, "w", encoding="utf-8") as f:
-            if yaml is not None:
-                yaml.dump(script_data, f, allow_unicode=True, sort_keys=False)
-            else:
-                import json
-                json.dump(script_data, f, indent=2, ensure_ascii=False)
+    target_json_path = out_json_path or out_yaml_path
+    if target_json_path:
+        p_json = Path(target_json_path)
+        p_json.parent.mkdir(parents=True, exist_ok=True)
+        with open(p_json, "w", encoding="utf-8") as f:
+            json.dump(script_data, f, indent=2, ensure_ascii=False)
 
     if out_md_path:
         p_md = Path(out_md_path)

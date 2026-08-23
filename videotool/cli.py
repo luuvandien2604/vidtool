@@ -51,10 +51,10 @@ def main(argv: list[str] | None = None) -> int:
                               help="output path for fact_verification_report.json")
 
     # Subcommand: shooting-script
-    ss_parser = subparsers.add_parser("shooting-script", help="generate shooting_script.yaml and shooting_script.md artifacts")
+    ss_parser = subparsers.add_parser("shooting-script", help="generate shooting_script.json and shooting_script.md artifacts")
     ss_parser.add_argument("fixture", choices=sorted(FIXTURES), help="fixture episode name")
     ss_parser.add_argument("--artifacts", default="artifacts", help="artifacts directory")
-    ss_parser.add_argument("--out-yaml", default=None, help="custom output path for shooting_script.yaml")
+    ss_parser.add_argument("--out-json", default=None, help="custom output path for shooting_script.json")
     ss_parser.add_argument("--out-md", default=None, help="custom output path for shooting_script.md")
 
     # Subcommand: revise
@@ -179,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
                 editorial_overrides=editorial_overrides,
             )
 
-            yaml_path = args.out_yaml or (Path(args.artifacts) / f"{args.fixture}_shooting_script.yaml")
+            json_path = args.out_json or (Path(args.artifacts) / f"{args.fixture}_shooting_script.json")
             md_path = args.out_md or (Path(args.artifacts) / f"{args.fixture}_shooting_script.md")
 
             script_data, md_text = generate_shooting_script(
@@ -189,11 +189,11 @@ def main(argv: list[str] | None = None) -> int:
                 geometry_plans=geo_plans,
                 media_assets=media_assets,
                 visual_compositions=visual_comps,
-                out_yaml_path=yaml_path,
+                out_json_path=json_path,
                 out_md_path=md_path,
             )
             print(f"Generated shooting script for {args.fixture} ({len(script_data['beats'])} beats):")
-            print(f"  - Machine-readable YAML: {yaml_path}")
+            print(f"  - Machine-readable JSON: {json_path}")
             print(f"  - Human-readable MD:   {md_path}")
             return 0
         except Exception as exc:
@@ -307,7 +307,7 @@ def main(argv: list[str] | None = None) -> int:
                     editorial_intents=editorial_intents,
                     editorial_overrides=editorial_overrides,
                 )
-                yaml_path = Path(args.artifacts) / f"{args.fixture}_shooting_script.yaml"
+                json_path = Path(args.artifacts) / f"{args.fixture}_shooting_script.json"
                 md_path = Path(args.artifacts) / f"{args.fixture}_shooting_script.md"
                 generate_shooting_script(
                     plan=plan,
@@ -316,10 +316,10 @@ def main(argv: list[str] | None = None) -> int:
                     geometry_plans=geo_plans,
                     media_assets=media_assets,
                     visual_compositions=visual_comps,
-                    out_yaml_path=yaml_path,
+                    out_json_path=json_path,
                     out_md_path=md_path,
                 )
-                print(f"  shooting script: {yaml_path} and {md_path}")
+                print(f"  shooting script: {json_path} and {md_path}")
             except Exception as ss_exc:
                 print(f"  warn: failed to auto-generate shooting script: {ss_exc}")
 

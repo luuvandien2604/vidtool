@@ -1,9 +1,9 @@
-"""Tests for shooting script generator (YAML and 13-column Markdown tables)."""
+"""Tests for shooting script generator (JSON and 13-column Markdown tables)."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import pytest
-import yaml
 
 from videotool.artifacts import ArtifactStore
 from videotool.fixtures import berlin_wall
@@ -42,7 +42,7 @@ def test_shooting_script_generation(planned_artifacts, tmp_path: Path):
         semantic_beats=semantic_beats,
     )
 
-    out_yaml = tmp_path / "test_script.yaml"
+    out_json = tmp_path / "test_script.json"
     out_md = tmp_path / "test_script.md"
 
     script_data, md_text = generate_shooting_script(
@@ -52,20 +52,20 @@ def test_shooting_script_generation(planned_artifacts, tmp_path: Path):
         geometry_plans=geo_plans,
         media_assets=media_assets,
         visual_compositions=visual_comps,
-        out_yaml_path=out_yaml,
+        out_json_path=out_json,
         out_md_path=out_md,
     )
 
-    assert out_yaml.is_file()
+    assert out_json.is_file()
     assert out_md.is_file()
 
-    # Verify YAML structure
-    with open(out_yaml, "r", encoding="utf-8") as f:
-        loaded_yaml = yaml.safe_load(f)
+    # Verify JSON structure
+    with open(out_json, "r", encoding="utf-8") as f:
+        loaded_json = json.load(f)
 
-    assert loaded_yaml["episode_id"] == episode_id
-    assert len(loaded_yaml["beats"]) == len(semantic_beats)
-    for beat in loaded_yaml["beats"]:
+    assert loaded_json["episode_id"] == episode_id
+    assert len(loaded_json["beats"]) == len(semantic_beats)
+    for beat in loaded_json["beats"]:
         assert "beat_id" in beat
         assert "narration_text" in beat
         assert "elements" in beat

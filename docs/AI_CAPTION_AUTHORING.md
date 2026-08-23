@@ -8,7 +8,7 @@ This document outlines the architecture, data models, anti-hallucination groundi
 
 The **AI Editorial Director** serves an advisory role in the production pipeline:
 - Proposing concise, narrative-driven node captions/labels (replacing raw extracted entity tokens like `"Hungary"` with `"Borders opened through Hungary"`).
-- Providing machine-readable (`shooting_script.yaml`) and human-readable (`shooting_script.md`) shooting scripts before full video render.
+- Providing machine-readable (`shooting_script.json`) and human-readable (`shooting_script.md`) shooting scripts before full video render.
 - Facilitating an audited, feedback-driven revision loop where human directors can submit free-text critiques, preview structured before/after diffs, and apply changes into durable `editorial_overrides.json` files.
 
 ---
@@ -45,32 +45,40 @@ Proposed Caption
 
 The system produces two synchronized shooting script artifacts:
 
-### 3.1. Machine-Readable Source of Truth (`shooting_script.yaml`)
+### 3.1. Machine-Readable Source of Truth (`shooting_script.json`)
 Contains a full hierarchical manifest of all beats and elements:
-```yaml
-episode_id: berlin_wall_phase1
-total_duration_sec: 66.21
-beats:
-  - beat_id: beat_0004
-    start_sec: 19.02
-    end_sec: 26.02
-    duration_sec: 7.00
-    visual_family: geographic_map
-    strategy: route_map
-    narration_text: "Hungary had opened its border with Austria..."
-    elements:
-      - index: 2
-        element_id: semantic:beat_0004:connector_endpoint:01
-        element_type: Text badge (LOCATION)
-        role: CONNECTOR_ENDPOINT
-        display_content: '**"Borders opened through Hungary"**'
-        content_source: '[override]' # [raw] | [ai_authored] | [override]
-        bounds_norm: 0.18,0.30,0.05,0.05
-        entrance_sec: 19.02
-        exit_sec: 26.02
-        motion: fade-in ~0.4s
-        connects_to: → 03 (`ROUTE_TO`)
-        semantic_reason: anchor 'Hungary'
+```json
+{
+  "episode_id": "berlin_wall_phase1",
+  "total_duration_sec": 66.21,
+  "beats": [
+    {
+      "beat_id": "beat_0004",
+      "start_sec": 19.02,
+      "end_sec": 26.02,
+      "duration_sec": 7.00,
+      "visual_family": "geographic_map",
+      "strategy": "route_map",
+      "narration_text": "Hungary had opened its border with Austria...",
+      "elements": [
+        {
+          "index": 2,
+          "element_id": "semantic:beat_0004:connector_endpoint:01",
+          "element_type": "Text badge (LOCATION)",
+          "role": "CONNECTOR_ENDPOINT",
+          "display_content": "**\"Borders opened through Hungary\"**",
+          "content_source": "[override]",
+          "bounds_norm": "0.18,0.30,0.05,0.05",
+          "entrance_sec": 19.02,
+          "exit_sec": 26.02,
+          "motion": "fade-in ~0.4s",
+          "connects_to": "→ 03 (`ROUTE_TO`)",
+          "semantic_reason": "anchor 'Hungary'"
+        }
+      ]
+    }
+  ]
+}
 ```
 
 ### 3.2. Human-Readable 13-Column Markdown Table (`shooting_script.md`)
