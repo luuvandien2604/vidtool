@@ -624,6 +624,7 @@ def create_web_server(
     artifacts_dir: str | Path = "artifacts",
 ) -> ThreadingHTTPServer:
     """Instantiate a ThreadingHTTPServer configured for VideoTool."""
+    ThreadingHTTPServer.allow_reuse_address = True
     server_address = (host, port)
     server = ThreadingHTTPServer(server_address, VideoToolRequestHandler)
     server.artifacts_root = Path(artifacts_dir).resolve()  # type: ignore[attr-defined]
@@ -638,7 +639,26 @@ def run_web_server(
     open_browser: bool = False,
 ) -> None:
     """Run the web server synchronously until interrupted."""
-    server = create_web_server(host=host, port=port, artifacts_dir=artifacts_dir)
+    try:
+        server = create_web_server(host=host, port=port, artifacts_dir=artifacts_dir)
+    except OSError as exc:
+        if getattr(exc, "errno", None) == 98 or "Address already in use" in str(exc):
+            url = f"http://{host}:{port}/"
+            print("================================================================================")
+            print("                    VIDEOTOOL LOCAL WEB UI DASHBOARD")
+            print("================================================================================")
+            print(f"  [INFO] Web server is ALREADY running at: {url}")
+            print(f"  Open {url} in your browser to view the dashboard.")
+            print("================================================================================")
+            if open_browser:
+                try:
+                    import webbrowser
+                    webbrowser.open(url)
+                except Exception:
+                    pass
+            return
+        raise
+
     url = f"http://{host}:{port}/"
     print("================================================================================")
     print("                    VIDEOTOOL LOCAL WEB UI DASHBOARD")

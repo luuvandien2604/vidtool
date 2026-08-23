@@ -49,8 +49,8 @@
     infoNarration: document.getElementById('infoNarration'),
 
     // Tabs & Tables
-    tabButtons: document.querySelectorAll('.tab-btn'),
-    tabContents: document.querySelectorAll('.tab-content'),
+    tabButtons: document.querySelectorAll('.nav-tab'),
+    tabContents: document.querySelectorAll('.tab-pane'),
     scriptSearch: document.getElementById('scriptSearch'),
     filterBeatSelect: document.getElementById('filterBeatSelect'),
     scriptTableBody: document.getElementById('scriptTableBody'),

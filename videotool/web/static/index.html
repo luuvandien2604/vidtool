@@ -3,299 +3,330 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VideoTool Studio — AI Documentary Dashboard</title>
+  <title>VideoTool Studio — AI Documentary Pipeline</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <!-- Header -->
+  <!-- Top Navigation Header -->
   <header class="app-header">
-    <div class="brand">
-      <div class="brand-badge">VOX DOCS</div>
-      <h1 class="brand-title">VideoTool Studio</h1>
-      <span class="brand-sub">AI Editorial Director & Renderer</span>
+    <div class="header-left">
+      <div class="brand">
+        <span class="brand-badge">VOX DOCS</span>
+        <h1 class="brand-title">VideoTool Studio</h1>
+        <span class="brand-sub">AI Editorial Director</span>
+      </div>
+
+      <!-- Main Navigation Tabs -->
+      <nav class="nav-tabs">
+        <button class="nav-tab active" data-tab="tabStudio">🎬 Studio & Video</button>
+        <button class="nav-tab" data-tab="tabScript">📋 Shooting Script (13 Cột)</button>
+        <button class="nav-tab" data-tab="tabJson">🔍 JSON Manifest</button>
+        <button class="nav-tab" data-tab="tabTerminal">🖥️ Terminal Console <span id="navJobBadge" class="nav-badge hidden">RUNNING</span></button>
+      </nav>
     </div>
 
-    <div class="header-controls">
-      <div class="selector-group">
-        <label for="episodeSelect">Tập phim (Fixture):</label>
-        <select id="episodeSelect" class="form-select">
-          <option value="berlin_wall">berlin_wall (Bức tường Berlin)</option>
+    <div class="header-right">
+      <div class="selector-wrapper">
+        <label for="episodeSelect">Tập phim:</label>
+        <select id="episodeSelect" class="form-select-sm">
+          <option value="berlin_wall">berlin_wall (Berlin Wall)</option>
         </select>
       </div>
 
-      <button id="btnRefresh" class="btn btn-secondary" title="Làm mới trạng thái">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      <button id="btnRefresh" class="btn btn-secondary btn-sm" title="Làm mới toàn bộ dữ liệu">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
         Làm mới
       </button>
     </div>
   </header>
 
   <!-- Status Ribbon -->
-  <div class="status-ribbon">
-    <div class="status-pill" id="pillDuration">
-      <span class="pill-label">Thời lượng:</span>
-      <span class="pill-value" id="valDuration">--:--</span>
+  <section class="status-bar">
+    <div class="status-item">
+      <span class="status-label">Thời lượng:</span>
+      <span class="status-val text-gold" id="valDuration">0:00.00</span>
     </div>
-    <div class="status-pill" id="pillBeats">
-      <span class="pill-label">Số Beats:</span>
-      <span class="pill-value" id="valBeats">--</span>
+    <div class="status-item">
+      <span class="status-label">Số Beats:</span>
+      <span class="status-val" id="valBeats">0</span>
     </div>
-    <div class="status-pill" id="pillVideo">
-      <span class="pill-label">Video:</span>
-      <span class="pill-value badge-neutral" id="valVideo">Chưa render</span>
+    <div class="status-item">
+      <span class="status-label">Trạng thái Video:</span>
+      <span class="status-badge badge-neutral" id="valVideo">Chưa render</span>
     </div>
-    <div class="status-pill" id="pillOverrides">
-      <span class="pill-label">Overrides:</span>
-      <span class="pill-value" id="valOverrides">0</span>
+    <div class="status-item">
+      <span class="status-label">Overrides:</span>
+      <span class="status-val text-coral" id="valOverrides">0</span>
     </div>
-    <div class="status-pill" id="pillAudio">
-      <span class="pill-label">Audio:</span>
-      <span class="pill-value" id="valAudio">--</span>
+    <div class="status-item">
+      <span class="status-label">Âm thanh:</span>
+      <span class="status-val" id="valAudio">None</span>
     </div>
-  </div>
+    <div class="status-item status-right">
+      <span class="status-label">Server:</span>
+      <span class="status-val text-green">● Online (127.0.0.1:8080)</span>
+    </div>
+  </section>
 
-  <!-- Studio Layout Grid -->
-  <main class="studio-grid">
+  <!-- Main Container Viewports -->
+  <main class="main-viewport">
     
-    <!-- LEFT PANEL: Actions & Pipeline Controls -->
-    <aside class="panel left-panel">
-      <div class="panel-card">
-        <h2 class="card-title">🚀 Điều Khiển Pipeline</h2>
+    <!-- TAB 1: STUDIO & VIDEO WORKSPACE -->
+    <div id="tabStudio" class="tab-pane active">
+      <div class="studio-layout">
         
-        <!-- Pipeline Actions -->
-        <div class="action-box">
-          <h3 class="action-title">1. Lập Kế Hoạch (Planning)</h3>
-          <div class="form-row">
-            <label>Chế độ:</label>
-            <select id="planMode" class="form-select-sm">
-              <option value="draft">Draft (Offline fixtures)</option>
-              <option value="final">Final (Live acquisition)</option>
-            </select>
+        <!-- Left: Video Player & Beat Timeline -->
+        <div class="studio-player-col">
+          <div class="card video-card">
+            <div class="card-head">
+              <div class="card-title-group">
+                <span class="card-icon">📹</span>
+                <h2 class="card-heading">Video Preview & Timeline Sync</h2>
+              </div>
+              <span id="activeBeatBadge" class="badge badge-gold">BEAT 01</span>
+            </div>
+
+            <!-- Video Frame Container -->
+            <div class="video-container">
+              <video id="mainVideo" controls preload="metadata">
+                <source id="videoSource" src="" type="video/mp4">
+              </video>
+              <div id="videoPlaceholder" class="video-empty-state">
+                <div class="empty-icon">🎬</div>
+                <h3 class="empty-title">Chưa có Video MP4</h3>
+                <p class="empty-desc">Tập phim chưa được render thành file video MP4 hoàn chỉnh.</p>
+                <button id="btnQuickRender" class="btn btn-accent btn-sm">
+                  ⚡ Render Video Ngay (Silence Audio)
+                </button>
+              </div>
+            </div>
+
+            <!-- Interactive Beat Marker Timeline -->
+            <div class="beat-timeline-box">
+              <div class="timeline-meta">
+                <span class="timeline-title">Thanh Beats Timeline (nhấp vào beat để tua đến thời điểm tương ứng):</span>
+                <span id="currentTimeDisplay" class="timeline-time">0:00.00 / 0:00.00</span>
+              </div>
+              <div id="beatTrack" class="beat-track">
+                <!-- Dynamically populated beat segments -->
+              </div>
+            </div>
+
+            <!-- Active Beat Narration Card -->
+            <div id="activeBeatInfo" class="active-beat-card">
+              <div class="beat-meta-row">
+                <span class="beat-tag beat-id" id="infoBeatId">beat_0001</span>
+                <span class="beat-tag beat-family" id="infoFamily">full_frame_cinematic</span>
+                <span class="beat-tag beat-time" id="infoTime">[0:00.00 - 0:05.63]</span>
+              </div>
+              <p class="beat-narration" id="infoNarration">"November 1989. For twenty-eight years, a wall has divided one city in two."</p>
+            </div>
           </div>
-          <div class="form-check">
-            <input type="checkbox" id="chkAiEditorial" checked>
-            <label for="chkAiEditorial">Bật AI Editorial Captions</label>
-          </div>
-          <button id="btnRunPlan" class="btn btn-primary btn-block">
-            Chạy Planning Pipeline
-          </button>
         </div>
 
-        <div class="action-box">
-          <h3 class="action-title">2. Render Video (FFmpeg)</h3>
-          <div class="form-row">
-            <label>Âm thanh:</label>
-            <select id="renderAudio" class="form-select-sm">
-              <option value="silence">Silence (Synthetic audio)</option>
-              <option value="azure">Azure Speech TTS</option>
-              <option value="none">None (Tắt âm)</option>
-            </select>
-          </div>
-          <div class="form-check">
-            <input type="checkbox" id="chkClickTrack">
-            <label for="chkClickTrack">Thêm Click-track nhịp</label>
-          </div>
-          <button id="btnRunRender" class="btn btn-accent btn-block">
-            🎬 Render Episode Video
-          </button>
-        </div>
+        <!-- Right: Actions, Feedback Revision Studio & Overrides -->
+        <div class="studio-sidebar-col">
+          
+          <!-- Quick Pipeline Actions Card -->
+          <div class="card actions-card">
+            <div class="card-head">
+              <div class="card-title-group">
+                <span class="card-icon">⚡</span>
+                <h2 class="card-heading">Điều Khiển Pipeline</h2>
+              </div>
+            </div>
+            
+            <div class="action-buttons-grid">
+              <div class="action-unit">
+                <div class="unit-head">
+                  <strong>1. Planning Pipeline</strong>
+                  <select id="planMode" class="form-select-xs">
+                    <option value="draft">Draft</option>
+                    <option value="final">Final</option>
+                  </select>
+                </div>
+                <div class="unit-check">
+                  <input type="checkbox" id="chkAiEditorial" checked>
+                  <label for="chkAiEditorial">Bật AI Captions</label>
+                </div>
+                <button id="btnRunPlan" class="btn btn-primary btn-sm btn-block">Chạy Planning</button>
+              </div>
 
-        <div class="action-box">
-          <h3 class="action-title">3. Shooting Script</h3>
-          <button id="btnGenScript" class="btn btn-secondary btn-block">
-            Xuất JSON & Markdown
-          </button>
+              <div class="action-unit">
+                <div class="unit-head">
+                  <strong>2. Render Video</strong>
+                  <select id="renderAudio" class="form-select-xs">
+                    <option value="silence">Silence</option>
+                    <option value="azure">Azure TTS</option>
+                    <option value="none">None</option>
+                  </select>
+                </div>
+                <div class="unit-check">
+                  <input type="checkbox" id="chkClickTrack">
+                  <label for="chkClickTrack">Click-track</label>
+                </div>
+                <button id="btnRunRender" class="btn btn-accent btn-sm btn-block">Render MP4</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Feedback Revision Studio Card -->
+          <div class="card revision-card">
+            <div class="card-head">
+              <div class="card-title-group">
+                <span class="card-icon">✍️</span>
+                <h2 class="card-heading">Feedback Revision Studio</h2>
+              </div>
+            </div>
+            <p class="card-hint">Nhập câu lệnh cấu trúc <code>Beat N: [caption] A -> B</code> để sửa đổi:</p>
+
+            <div class="form-group">
+              <textarea id="feedbackInput" class="form-textarea" rows="2" placeholder="Ví dụ: Beat 4: caption Hungary -> Escape route begins"></textarea>
+              <div class="chips-row">
+                <span class="chip" data-text="Beat 4: caption Hungary -> Escape route begins">Beat 4: Hungary -> Escape route</span>
+                <span class="chip" data-text="Beat 3: 'Gunter Schabowski' -> 'Official Schabowski'">Beat 3: Official Schabowski</span>
+                <span class="chip" data-text="Beat 2: caption Berlin -> Berlin: Divided City">Beat 2: Divided City</span>
+              </div>
+            </div>
+
+            <div class="revision-control-row">
+              <div class="provider-select">
+                <label>Provider:</label>
+                <select id="revisionProvider" class="form-select-xs">
+                  <option value="mock">Mock (Structured A -> B)</option>
+                  <option value="gemini">Gemini LLM (Free-Text)</option>
+                </select>
+              </div>
+              <button id="btnPropose" class="btn btn-primary btn-sm">
+                🔍 Propose Revision
+              </button>
+            </div>
+
+            <!-- Proposal Diff Card (Toggled upon proposal creation) -->
+            <div id="proposalBox" class="proposal-diff-box hidden">
+              <div class="diff-header">
+                <span class="prop-id" id="propId">prop_00000000</span>
+                <span class="badge badge-green" id="propStatusBadge">VALID (Grounded)</span>
+              </div>
+
+              <div class="diff-comparison">
+                <div class="diff-col before-col">
+                  <span class="diff-tag">TRƯỚC (Old):</span>
+                  <div class="diff-val" id="propOldVal">--</div>
+                </div>
+                <div class="diff-col after-col">
+                  <span class="diff-tag">SAU (Proposed):</span>
+                  <div class="diff-val" id="propNewVal">--</div>
+                </div>
+              </div>
+
+              <div class="diff-details">
+                <div><strong>Target:</strong> <span id="propBeat">--</span> / <span id="propTarget">--</span></div>
+                <div><strong>Lý do:</strong> <span id="propRationale">--</span></div>
+                <div id="propRejectionBox" class="text-error hidden"><strong>Lỗi:</strong> <span id="propRejection">--</span></div>
+              </div>
+
+              <button id="btnApplyProposal" class="btn btn-accent btn-sm btn-block">
+                ✅ 1-Click Apply & Lưu Override
+              </button>
+            </div>
+          </div>
+
+          <!-- Active Durable Overrides Card -->
+          <div class="card overrides-card">
+            <div class="card-head">
+              <div class="card-title-group">
+                <span class="card-icon">📌</span>
+                <h2 class="card-heading">Durable Overrides (<span id="overrideCount">0</span>)</h2>
+              </div>
+            </div>
+            <div id="overridesList" class="overrides-container">
+              <p class="empty-hint">Chưa có override nào được áp dụng.</p>
+            </div>
+          </div>
+
         </div>
       </div>
+    </div>
 
-      <!-- Active Overrides Box -->
-      <div class="panel-card">
-        <h2 class="card-title">📌 Durable Overrides (<span id="overrideCount">0</span>)</h2>
-        <div id="overridesList" class="overrides-list">
-          <p class="empty-hint">Chưa có override nào được áp dụng.</p>
-        </div>
-      </div>
-    </aside>
-
-    <!-- CENTER PANEL: Video Player, Timeline & Shooting Script -->
-    <section class="panel center-panel">
-      
-      <!-- Top Video Player Box -->
-      <div class="panel-card video-card">
-        <div class="card-header">
-          <h2 class="card-title">🎬 Video Preview & Đồng Bộ Beats</h2>
-          <span id="activeBeatBadge" class="badge badge-gold">Beat 01</span>
-        </div>
-
-        <div class="video-wrapper">
-          <video id="mainVideo" controls preload="metadata" poster="">
-            <source id="videoSource" src="" type="video/mp4">
-            Trình duyệt không hỗ trợ thẻ video.
-          </video>
-          <div id="videoPlaceholder" class="video-placeholder">
-            <div class="placeholder-icon">📹</div>
-            <p>Chưa có video được render cho tập phim này.</p>
-            <button id="btnQuickRender" class="btn btn-sm btn-primary">Render Video Ngay</button>
+    <!-- TAB 2: SHOOTING SCRIPT (13-COLUMN TABLE) -->
+    <div id="tabScript" class="tab-pane">
+      <div class="card script-table-card">
+        <div class="card-head">
+          <div class="card-title-group">
+            <span class="card-icon">📋</span>
+            <h2 class="card-heading">Shooting Script Manifest (13 Cột)</h2>
           </div>
-        </div>
-
-        <!-- Interactive Beat Marker Timeline -->
-        <div class="beat-timeline-container">
-          <div class="timeline-header">
-            <span>Thanh timeline Beats (nhấp để nhảy tới beat tương ứng):</span>
-            <span id="currentTimeDisplay">0:00.00 / 0:00.00</span>
-          </div>
-          <div id="beatTrack" class="beat-track">
-            <!-- Dynamically generated beat bars -->
-          </div>
-        </div>
-
-        <!-- Active Beat Info Card -->
-        <div id="activeBeatInfo" class="active-beat-info">
-          <div class="info-row">
-            <span class="info-tag" id="infoBeatId">beat_0001</span>
-            <span class="info-tag tag-family" id="infoFamily">full_frame_cinematic</span>
-            <span class="info-tag tag-time" id="infoTime">[0:00.00 - 0:05.63]</span>
-          </div>
-          <p class="info-narration" id="infoNarration">"November 1989. For twenty-eight years, a wall has divided one city in two."</p>
-        </div>
-      </div>
-
-      <!-- Bottom Tabs: Shooting Script & JSON -->
-      <div class="panel-card script-card">
-        <div class="tab-bar">
-          <button class="tab-btn active" data-tab="tabTable">📋 Bảng Shooting Script (13 Cột)</button>
-          <button class="tab-btn" data-tab="tabJson">🔍 JSON Manifest</button>
-          <button class="tab-btn" data-tab="tabMarkdown">📄 Markdown View</button>
-        </div>
-
-        <!-- Tab 1: Table -->
-        <div id="tabTable" class="tab-content active">
-          <div class="table-controls">
-            <input type="text" id="scriptSearch" class="form-input-sm" placeholder="Lọc nội dung, element ID, thực thể...">
+          <div class="table-filter-group">
+            <input type="text" id="scriptSearch" class="form-input-sm" placeholder="🔍 Tìm kiếm nội dung, element ID, thực thể...">
             <select id="filterBeatSelect" class="form-select-sm">
               <option value="all">Tất cả các Beats</option>
             </select>
-          </div>
-          <div class="table-responsive">
-            <table id="scriptTable" class="data-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Beat</th>
-                  <th>Element ID</th>
-                  <th>Loại</th>
-                  <th>Nội dung hiển thị</th>
-                  <th>Nguồn</th>
-                  <th>Asset ID</th>
-                  <th>Vùng đặt</th>
-                  <th>Tọa độ (x,y,w,h)</th>
-                  <th>Vào lúc</th>
-                  <th>Ra lúc</th>
-                  <th>Chuyển động</th>
-                  <th>Lý do</th>
-                </tr>
-              </thead>
-              <tbody id="scriptTableBody">
-                <tr><td colspan="13" class="text-center">Đang tải shooting script...</td></tr>
-              </tbody>
-            </table>
+            <button id="btnGenScript" class="btn btn-secondary btn-sm">Xuất JSON & MD</button>
           </div>
         </div>
 
-        <!-- Tab 2: JSON -->
-        <div id="tabJson" class="tab-content">
-          <pre id="jsonViewer" class="code-block"><code>{}</code></pre>
-        </div>
-
-        <!-- Tab 3: Markdown -->
-        <div id="tabMarkdown" class="tab-content">
-          <pre id="mdViewer" class="code-block"><code>Chưa có markdown.</code></pre>
+        <div class="table-scroll-container">
+          <table id="scriptTable" class="script-data-table">
+            <thead>
+              <tr>
+                <th width="40">#</th>
+                <th width="80">Beat</th>
+                <th width="190">Element ID</th>
+                <th width="130">Loại</th>
+                <th>Nội dung hiển thị</th>
+                <th width="90">Nguồn</th>
+                <th width="140">Asset ID</th>
+                <th width="80">Vùng</th>
+                <th width="140">Tọa độ (x,y,w,h)</th>
+                <th width="75">Vào lúc</th>
+                <th width="75">Ra lúc</th>
+                <th width="100">Chuyển động</th>
+                <th>Lý do (Semantic)</th>
+              </tr>
+            </thead>
+            <tbody id="scriptTableBody">
+              <tr><td colspan="13" class="text-center">Đang tải shooting script...</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
-    </section>
+    </div>
 
-    <!-- RIGHT PANEL: Feedback Revision Studio & Live Console -->
-    <aside class="panel right-panel">
-      
-      <!-- Feedback Revision Studio Card -->
-      <div class="panel-card revision-card">
-        <h2 class="card-title">✍️ Feedback Revision Studio</h2>
-        <p class="card-sub">Nhập yêu cầu sửa đổi bằng câu lệnh có cấu trúc hoặc ngôn ngữ tự nhiên.</p>
-
-        <div class="form-group">
-          <label for="feedbackInput">Feedback String:</label>
-          <textarea id="feedbackInput" class="form-textarea" rows="3" placeholder="Ví dụ: Beat 4: caption Hungary -> Escape route begins"></textarea>
-          <div class="feedback-suggestions">
-            <span class="suggestion-chip" data-text="Beat 4: caption Hungary -> Escape route begins">Beat 4: Hungary -> Escape route</span>
-            <span class="suggestion-chip" data-text="Beat 3: 'Gunter Schabowski' -> 'Official Schabowski'">Beat 3: Official Schabowski</span>
-            <span class="suggestion-chip" data-text="Beat 2: caption Berlin -> Berlin: Divided City">Beat 2: Divided City</span>
+    <!-- TAB 3: JSON MANIFEST -->
+    <div id="tabJson" class="tab-pane">
+      <div class="card code-card">
+        <div class="card-head">
+          <div class="card-title-group">
+            <span class="card-icon">🔍</span>
+            <h2 class="card-heading">Raw Shooting Script JSON Manifest</h2>
           </div>
         </div>
-
-        <div class="form-row">
-          <label>Provider:</label>
-          <select id="revisionProvider" class="form-select-sm">
-            <option value="mock">Mock (Structured A -> B)</option>
-            <option value="gemini">Gemini LLM (Natural Language)</option>
-          </select>
-          <button id="btnPropose" class="btn btn-primary">
-            🔍 Propose Revision
-          </button>
-        </div>
-
-        <!-- Proposal Diff Box (Shown when proposal generated) -->
-        <div id="proposalBox" class="proposal-box hidden">
-          <div class="proposal-header">
-            <span class="proposal-id" id="propId">prop_00000000</span>
-            <span class="badge" id="propStatusBadge">VALID</span>
-          </div>
-
-          <div class="diff-grid">
-            <div class="diff-col diff-before">
-              <span class="diff-label">Trước (Old):</span>
-              <div class="diff-text" id="propOldVal">--</div>
-            </div>
-            <div class="diff-col diff-after">
-              <span class="diff-label">Sau (Proposed):</span>
-              <div class="diff-text" id="propNewVal">--</div>
-            </div>
-          </div>
-
-          <div class="proposal-meta">
-            <div class="meta-item"><strong>Beat:</strong> <span id="propBeat">--</span></div>
-            <div class="meta-item"><strong>Target Node:</strong> <span id="propTarget">--</span></div>
-            <div class="meta-item"><strong>Rationale:</strong> <span id="propRationale">--</span></div>
-            <div class="meta-item error-text hidden" id="propRejectionBox"><strong>Lý do từ chối:</strong> <span id="propRejection">--</span></div>
-          </div>
-
-          <div class="proposal-actions">
-            <button id="btnApplyProposal" class="btn btn-accent btn-block">
-              ✅ 1-Click Apply & Lưu Override
-            </button>
-          </div>
-        </div>
+        <pre id="jsonViewer" class="code-editor"><code>{}</code></pre>
       </div>
+    </div>
 
-      <!-- Live Terminal Console Card -->
-      <div class="panel-card console-card">
-        <div class="card-header">
-          <h2 class="card-title">🖥️ Live Terminal Console</h2>
-          <div class="terminal-actions">
+    <!-- TAB 4: LIVE TERMINAL CONSOLE -->
+    <div id="tabTerminal" class="tab-pane">
+      <div class="card terminal-card">
+        <div class="card-head">
+          <div class="card-title-group">
+            <span class="card-icon">🖥️</span>
+            <h2 class="card-heading">Live Execution Terminal Console</h2>
+          </div>
+          <div class="terminal-ctrls">
             <span id="jobStatusPill" class="badge badge-neutral">Sẵn sàng</span>
-            <button id="btnClearConsole" class="btn-icon" title="Xóa logs">🗑️</button>
+            <button id="btnClearConsole" class="btn btn-secondary btn-xs">Xóa màn hình</button>
           </div>
         </div>
-
-        <div id="terminalLog" class="terminal-body">
-          <div class="term-line term-system">VideoTool WebUI Console ready. Select an action above to execute.</div>
+        <div id="terminalLog" class="terminal-screen">
+          <div class="term-line term-system">VideoTool Studio Console initialized. Ready for pipeline commands.</div>
         </div>
       </div>
-
-    </aside>
+    </div>
 
   </main>
 
