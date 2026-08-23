@@ -162,6 +162,7 @@
 
     if (el.modalNewProject) {
       el.modalNewProject.classList.remove('hidden');
+      el.modalNewProject.style.display = 'flex';
     }
     if (el.inputTopic) {
       setTimeout(() => el.inputTopic.focus(), 50);
@@ -171,6 +172,7 @@
   function closeNewProjectModal() {
     if (el.modalNewProject) {
       el.modalNewProject.classList.add('hidden');
+      el.modalNewProject.style.display = 'none';
     }
   }
 

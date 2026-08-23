@@ -428,14 +428,14 @@
   </main>
 
   <!-- Modal: Tạo Dự Án Mới (New Project Topic) -->
-  <div id="modalNewProject" class="modal-overlay hidden" onclick="if(event.target===this)this.classList.add('hidden');">
+  <div id="modalNewProject" class="modal-overlay hidden" style="display: none;" onclick="if(event.target===this){this.classList.add('hidden');this.style.display='none';}">
     <div class="modal-card">
       <div class="modal-head">
         <div class="modal-title-group">
           <span class="modal-icon">🎬</span>
           <h2 class="modal-heading">Tạo Dự Án Video Mới (Bất Kỳ Chủ Đề Nào)</h2>
         </div>
-        <button id="btnCloseModal" type="button" class="btn-close" title="Đóng cửa sổ" onclick="document.getElementById('modalNewProject').classList.add('hidden');">&times;</button>
+        <button id="btnCloseModal" type="button" class="btn-close" title="Đóng cửa sổ" onclick="var m=document.getElementById('modalNewProject');m.classList.add('hidden');m.style.display='none';">&times;</button>
       </div>
 
       <form id="formNewProject" class="modal-body">

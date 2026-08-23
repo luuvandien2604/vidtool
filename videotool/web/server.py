@@ -509,7 +509,17 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
                     narration=narration,
                     catalog=[],
                 )
-                res = runner.run(ep_input)
+                try:
+                    res = runner.run(ep_input)
+                except Exception as run_err:
+                    job_state.append_log(f"⚠️ Lỗi xử lý AI ({run_err}). Tự động chuyển sang Mock Editorial để hoàn thành...")
+                    policy = ExecutionPolicy(
+                        mode=mode,
+                        editorial_ai_enabled=True,
+                        editorial_ai_provider="mock",
+                    )
+                    runner = PipelineRunner(self.store, policy=policy, media_config=media_config)
+                    res = runner.run(ep_input)
                 job_state.append_log(f"✓ Planning hoàn tất: {len(res.beats)} Beats, {len(res.compositions)} Visual Compositions (Status: {res.ok})")
 
                 # 3. Generate Shooting Script
