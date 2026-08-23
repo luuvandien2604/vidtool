@@ -210,16 +210,61 @@ class RevisionService:
         geo_data = next((g for g in geo_plans if g["beat_id"] == beat_id), {})
         nodes = geo_data.get("nodes", [])
 
-        # Pattern 1: Explicit pattern "set caption '...' on <target>" or "'...' -> '...'"
-        explicit_match = re.search(r"['\"]([^'\"]+)['\"]\s*(?:->|thành|to)\s*['\"]([^'\"]+)['\"]", feedback_text)
-        if explicit_match:
-            old_str = explicit_match.group(1).strip()
-            new_str = explicit_match.group(2).strip()
+        # Structured pattern matching: extract `<target> -> <new_value>` or `<target> to <new_value>`
+        remainder = re.sub(r"^.*?beat[\s_]*0*([1-9]|1[0-2])\s*[:,-]?\s*", "", feedback_text, flags=re.IGNORECASE).strip()
 
-            text_nodes = [n for n in nodes if n.get("text_role") or n.get("role") not in ("MAP", "HERO", "PORTRAIT", "DOCUMENT", "ARCHIVAL_IMAGE")]
-            target_node = next((n for n in text_nodes if old_str.lower() in [r.lower() for r in n.get("semantic_refs", [])]), None)
+        old_str = None
+        new_str = None
+
+        # Pattern 1: Arrow delimiters (->, =>, →) or Vietnamese 'thành'
+        arrow_match = re.search(
+            r"^(?:(?:set|change)\s+)?(?:caption\s+|label\s+)?['\"]?(.*?)['\"]?\s*(?:->|=>|→|\bthành\b)\s*['\"]?(.*?)['\"]?$",
+            remainder,
+            flags=re.IGNORECASE,
+        )
+        if arrow_match and arrow_match.group(1).strip() and arrow_match.group(2).strip():
+            old_str = arrow_match.group(1).strip().strip("'\"")
+            new_str = arrow_match.group(2).strip().strip("'\"")
+        else:
+            # Pattern 2: Quoted 'A' to 'B'
+            quoted_match = re.search(
+                r"['\"]([^'\"]+)['\"]\s+(?:to|thành)\s+['\"]([^'\"]+)['\"]",
+                remainder,
+                flags=re.IGNORECASE,
+            )
+            if quoted_match and quoted_match.group(1).strip() and quoted_match.group(2).strip():
+                old_str = quoted_match.group(1).strip()
+                new_str = quoted_match.group(2).strip()
+            else:
+                # Pattern 3: Explicit 'caption A to B' or 'set A to B'
+                explicit_match = re.search(
+                    r"^(?:set\s+|caption\s+|change\s+)(?:caption\s+)?['\"]?(\S+?)['\"]?\s+to\s+['\"]?(.+?)['\"]?$",
+                    remainder,
+                    flags=re.IGNORECASE,
+                )
+                if explicit_match and explicit_match.group(1).strip() and explicit_match.group(2).strip():
+                    old_str = explicit_match.group(1).strip().strip("'\"")
+                    new_str = explicit_match.group(2).strip().strip("'\"")
+
+        if old_str and new_str:
+            text_nodes = [
+                n for n in nodes
+                if n.get("text_role") or n.get("role") not in ("MAP", "HERO", "PORTRAIT", "DOCUMENT", "ARCHIVAL_IMAGE")
+            ]
+            target_node = next(
+                (n for n in text_nodes if old_str.lower() in [r.lower() for r in n.get("semantic_refs", [])]),
+                None,
+            )
             if not target_node:
-                target_node = next((n for n in nodes if old_str.lower() in [r.lower() for r in n.get("semantic_refs", [])] or old_str.lower() in n.get("node_id", "").lower()), None)
+                target_node = next(
+                    (n for n in text_nodes if old_str.lower() in n.get("node_id", "").lower()),
+                    None,
+                )
+            if not target_node:
+                target_node = next(
+                    (n for n in nodes if old_str.lower() in [r.lower() for r in n.get("semantic_refs", [])] or old_str.lower() in n.get("node_id", "").lower()),
+                    None,
+                )
             target_id = target_node["node_id"] if target_node else f"semantic:{beat_id}:label:00"
 
             is_valid, reason = validate_caption(
@@ -240,37 +285,7 @@ class RevisionService:
                 old_value=old_str,
                 new_value=new_str,
                 feedback=feedback_text,
-                reason=f"Pattern-matched revision from feedback",
-                is_valid=is_valid,
-                rejection_reason="" if is_valid else reason,
-            )
-
-        # Pattern 2: Fixture-pinned sample prompt for Beat 4: "Beat 4: caption Hungary nên gợi cảm hơn"
-        if "hungary" in feedback_text.lower() and beat_id == "beat_0004":
-            text_nodes = [n for n in nodes if n.get("text_role") or n.get("role") not in ("MAP", "HERO", "PORTRAIT", "DOCUMENT", "ARCHIVAL_IMAGE")]
-            target_node = next((n for n in text_nodes if "hungary" in [r.lower() for r in n.get("semantic_refs", [])] or "endpoint:01" in n.get("node_id", "")), None)
-            target_id = target_node["node_id"] if target_node else "semantic:beat_0004:connector_endpoint:01"
-            new_caption = "Borders opened through Hungary" if "hungary" in beat_data.get("narration_text", "").lower() else "Hungary border opened"
-
-            is_valid, reason = validate_caption(
-                caption=new_caption,
-                narration_text=beat_data.get("narration_text", ""),
-                entities=beat_data.get("entities", []),
-                locations=beat_data.get("locations", []),
-                dates=beat_data.get("dates", []),
-            )
-
-            return RevisionProposal(
-                proposal_id=prop_id,
-                episode_id=episode_id,
-                beat_id=beat_id,
-                target_id=target_id,
-                target_type="node_caption",
-                field="caption",
-                old_value="Hungary",
-                new_value=new_caption,
-                feedback=feedback_text,
-                reason="Refined Hungary location badge to describe border opening",
+                reason=f"Structured revision: '{old_str}' -> '{new_str}'",
                 is_valid=is_valid,
                 rejection_reason="" if is_valid else reason,
             )

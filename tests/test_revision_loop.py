@@ -24,10 +24,10 @@ def test_feedback_proposal_generation(planned_artifacts):
     store, episode_id = planned_artifacts
     service = RevisionService(provider_name="mock")
 
-    # Propose revision on Beat 4 Hungary caption
+    # Structured revision on Beat 4 Hungary caption (literal RHS parsing)
     prop = service.propose_revision(
         episode_id=episode_id,
-        feedback_text="Beat 4: caption Hungary nên gợi cảm hơn",
+        feedback_text="Beat 4: caption Hungary -> Escape route begins",
         store=store,
     )
 
@@ -35,8 +35,23 @@ def test_feedback_proposal_generation(planned_artifacts):
     assert prop.beat_id == "beat_0004"
     assert prop.target_type == "node_caption"
     assert prop.is_valid is True
-    assert prop.new_value != ""
     assert prop.old_value == "Hungary"
+    assert prop.new_value == "Escape route begins"  # Verbatim RHS, not a hardcoded substitute
+
+
+def test_feedback_proposal_rejected_ungrounded(planned_artifacts):
+    store, episode_id = planned_artifacts
+    service = RevisionService(provider_name="mock")
+
+    # Structured revision proposing ungrounded proper noun 'London'
+    prop = service.propose_revision(
+        episode_id=episode_id,
+        feedback_text="Beat 4: caption Hungary -> Escape to London",
+        store=store,
+    )
+
+    assert prop.is_valid is False
+    assert "London" in prop.rejection_reason
 
 
 def test_reject_nonexistent_target(planned_artifacts):
