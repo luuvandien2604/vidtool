@@ -16,6 +16,7 @@ from typing import Any
 
 from videotool.domain.narration import NarrationAudio
 from videotool.editorial.media.cache import MediaCache
+from videotool.render.beat_cache import BeatClipCache
 from videotool.render.frame_plan import BeatFramePlan, EpisodeFramePlan, MediaRenderElement
 from videotool.render.interfaces import Renderer, RenderResult
 from videotool.render.subtitles import escape_ass_text
@@ -232,7 +233,13 @@ class FFmpegRenderer(Renderer):
     def render(self, plan: EpisodeFramePlan, output_path: str | Path,
                cache_dir: str | Path | None = None,
                audio: NarrationAudio | None = None) -> RenderResult:
-        """Render the complete episode from frame plan with optional narration audio."""
+        """Render the complete episode from frame plan with optional narration audio.
+
+        Supports incremental re-rendering: each beat clip is cached in a durable
+        content-addressed store keyed by the beat's frame-plan hash. On subsequent
+        renders, only beats whose plan has changed are re-rendered — unchanged
+        beats reuse their cached clip files, skipping FFmpeg entirely.
+        """
         ok, msg = check_ffmpeg_available()
         if not ok:
             raise RuntimeError(f"FFmpeg build prerequisite check failed: {msg}")
@@ -255,14 +262,40 @@ class FFmpegRenderer(Renderer):
         cache = MediaCache(cache_dir) if cache_dir else None
         warnings: list[str] = []
 
+        # Beat clip cache: durable directory alongside media cache
+        beat_clip_cache: BeatClipCache | None = None
+        if cache_dir:
+            beat_cache_root = Path(cache_dir).parent / "beat_clip_cache"
+            beat_clip_cache = BeatClipCache(beat_cache_root)
+
         with tempfile.TemporaryDirectory(prefix="vidtool_render_") as tmp_str:
             work_dir = Path(tmp_str)
 
-            # Step 1: Render each beat clip in isolation
+            # Step 1: Render each beat clip in isolation (with cache check)
             beat_clips: list[Path] = []
             for i, beat in enumerate(plan.beats):
-                clip_path = self._render_beat_clip(beat, work_dir, cache, i)
-                beat_clips.append(clip_path)
+                # Compute content hash for this beat's frame plan
+                beat_dict = beat.to_dict()
+                beat_hash = BeatClipCache.beat_content_hash(beat_dict) if beat_clip_cache else ""
+
+                # Check cache for an existing clip
+                cached = None
+                if beat_clip_cache:
+                    cached = beat_clip_cache.lookup(beat_hash, beat.beat_id)
+
+                if cached is not None:
+                    # Cache hit: copy cached clip to work dir
+                    local_clip = work_dir / f"beat_{i:04d}_{beat.beat_id}.mp4"
+                    shutil.copy2(str(cached.clip_path), str(local_clip))
+                    beat_clips.append(local_clip)
+                else:
+                    # Cache miss: render from scratch
+                    clip_path = self._render_beat_clip(beat, work_dir, cache, i)
+                    beat_clips.append(clip_path)
+
+                    # Store the freshly rendered clip in the durable cache
+                    if beat_clip_cache:
+                        beat_clip_cache.store(beat_hash, beat.beat_id, clip_path)
 
             # Step 2: Lossless concatenation using concat demuxer
             concat_list_file = work_dir / "concat_list.txt"
@@ -337,6 +370,16 @@ class FFmpegRenderer(Renderer):
         elif audio is None and audio_streams:
             raise RuntimeError("Render verification failed: expected no audio stream in output MP4, but audio stream was found")
 
+        # Collect cache stats
+        cache_stats: dict[str, Any] = {}
+        if beat_clip_cache:
+            cache_stats = {
+                "beat_cache_hits": beat_clip_cache.hits,
+                "beat_cache_misses": beat_clip_cache.misses,
+                "beats_reused": len(beat_clip_cache.hits),
+                "beats_rendered": len(beat_clip_cache.misses),
+            }
+
         return RenderResult(
             output_path=out_dest,
             duration_sec=actual_duration,
@@ -348,6 +391,7 @@ class FFmpegRenderer(Renderer):
                 "size_bytes": int(format_info.get("size", 0)),
                 "actual_duration_sec": actual_duration,
                 "expected_duration_sec": plan.total_duration_sec,
+                **cache_stats,
             },
             audio_is_placeholder=audio.is_placeholder if audio else None,
             audio_path=audio.audio_path if audio else None,

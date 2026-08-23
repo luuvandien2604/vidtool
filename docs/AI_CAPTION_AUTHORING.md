@@ -130,4 +130,4 @@ Persists the approved patch into `artifacts/<episode_id>/editorial_overrides.jso
 ## 5. Invalidation & Incremental Execution Policy
 
 - **Fingerprinting**: `editorial_overrides.json` is hashed into stage fingerprints (`visual_strategy_plan`, `composition`, `semantic_geometry`).
-- **Re-render Architecture**: Modifying an override triggers partial per-beat re-render of only the affected beat's video clip, concatenating the final video in ~2–3 seconds while preserving untouched cached clips.
+- **Incremental Re-render**: Each beat clip is cached in a durable, content-addressed store (`beat_clip_cache/`) keyed by the SHA-256 hash of the beat's full frame plan (geometry, media checksums, text content, SVG overlay). On re-render after an override change, only beats whose frame-plan hash has changed are re-rendered by FFmpeg — unchanged beats reuse their cached clip files. The concat and subtitle burn-in steps always run (they are fast). Cache hit/miss stats are reported in `RenderResult.metadata` (`beats_reused`, `beats_rendered`, `beat_cache_hits`, `beat_cache_misses`).
