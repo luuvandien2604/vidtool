@@ -232,7 +232,8 @@ class FFmpegRenderer(Renderer):
 
     def render(self, plan: EpisodeFramePlan, output_path: str | Path,
                cache_dir: str | Path | None = None,
-               audio: NarrationAudio | None = None) -> RenderResult:
+               audio: NarrationAudio | None = None,
+               progress_callback: Any | None = None) -> RenderResult:
         """Render the complete episode from frame plan with optional narration audio.
 
         Supports incremental re-rendering: each beat clip is cached in a durable
@@ -252,20 +253,13 @@ class FFmpegRenderer(Renderer):
                 raise FileNotFoundError(f"Narration audio file not found: {audio.audio_path}")
             # Pre-mux duration alignment: automatically align last beat if audio duration differs
             dur_delta = abs(float(audio.duration_sec) - float(plan.total_duration_sec))
-            if dur_delta > 0.05:
-                if plan.beats:
-                    diff = float(audio.duration_sec) - float(plan.total_duration_sec)
-                    last_beat = plan.beats[-1]
-                    new_dur = max(0.5, float(last_beat.duration_sec) + diff)
-                    last_beat.duration_sec = new_dur
-                    last_beat.end_sec = last_beat.start_sec + new_dur
-                    plan.total_duration_sec = float(audio.duration_sec)
-                else:
-                    raise ValueError(
-                        f"Audio and video duration mismatch: audio duration is {audio.duration_sec:.3f}s "
-                        f"but video frame plan duration is {plan.total_duration_sec:.3f}s "
-                        f"(delta: {dur_delta:.3f}s exceeds 0.05s tolerance)"
-                    )
+            if dur_delta > 0.05 and plan.beats:
+                diff = float(audio.duration_sec) - float(plan.total_duration_sec)
+                last_beat = plan.beats[-1]
+                new_dur = max(0.5, float(last_beat.duration_sec) + diff)
+                last_beat.duration_sec = new_dur
+                last_beat.end_sec = last_beat.start_sec + new_dur
+                plan.total_duration_sec = float(audio.duration_sec)
 
         cache = MediaCache(cache_dir) if cache_dir else None
         warnings: list[str] = []
@@ -275,6 +269,10 @@ class FFmpegRenderer(Renderer):
         if cache_dir:
             beat_cache_root = Path(cache_dir).parent / "beat_clip_cache"
             beat_clip_cache = BeatClipCache(beat_cache_root)
+
+        total_beats = len(plan.beats)
+        if progress_callback:
+            progress_callback(f"🎬 Bắt đầu render {total_beats} beats (Tổng thời lượng: {plan.total_duration_sec:.2f}s)...")
 
         with tempfile.TemporaryDirectory(prefix="vidtool_render_") as tmp_str:
             work_dir = Path(tmp_str)
@@ -292,11 +290,15 @@ class FFmpegRenderer(Renderer):
                     cached = beat_clip_cache.lookup(beat_hash, beat.beat_id)
 
                 if cached is not None:
+                    if progress_callback:
+                        progress_callback(f"⚡ [Beat {i+1}/{total_beats}] Cache Hit: Tái sử dụng phân cảnh {beat.beat_id} ({beat.duration_sec:.1f}s)")
                     # Cache hit: copy cached clip to work dir
                     local_clip = work_dir / f"beat_{i:04d}_{beat.beat_id}.mp4"
                     shutil.copy2(str(cached.clip_path), str(local_clip))
                     beat_clips.append(local_clip)
                 else:
+                    if progress_callback:
+                        progress_callback(f"⏳ [Beat {i+1}/{total_beats}] Đang dựng hình & hiệu ứng motion {beat.beat_id} ({beat.duration_sec:.1f}s)...")
                     # Cache miss: render from scratch
                     clip_path = self._render_beat_clip(beat, work_dir, cache, i)
                     beat_clips.append(clip_path)
@@ -306,6 +308,8 @@ class FFmpegRenderer(Renderer):
                         beat_clip_cache.store(beat_hash, beat.beat_id, clip_path)
 
             # Step 2: Lossless concatenation using concat demuxer
+            if progress_callback:
+                progress_callback(f"🔗 [Ghép nối] Đang ghép nối không suy hao {total_beats} phân cảnh thành video gốc...")
             concat_list_file = work_dir / "concat_list.txt"
             concat_entries = [f"file '{clip.resolve()}'" for clip in beat_clips]
             concat_list_file.write_text("\n".join(concat_entries) + "\n", encoding="utf-8")
@@ -327,6 +331,8 @@ class FFmpegRenderer(Renderer):
                 )
 
             # Step 3: Burn in Episode ASS Subtitles and mux Audio onto final MP4
+            if progress_callback:
+                progress_callback("🎞️ [Phụ đề & Âm thanh] Ghi đè phụ đề ASS phong cách Vox và trộn âm thanh...")
             subtitles_file = work_dir / "episode_subtitles.ass"
             subtitles_file.write_text(plan.subtitles_ass, encoding="utf-8")
             subtitles_escaped = str(subtitles_file).replace("\\", "/").replace(":", "\\:")

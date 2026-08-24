@@ -576,17 +576,18 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
             JOBS[job_id] = job_state
 
         def _worker() -> None:
-            active_ai = ai_provider
-            active_audio = audio_provider
-            job_state.append_log("================================================================================")
-            job_state.append_log(f"🚀 AUTO VOX PRODUCTION PIPELINE: {topic}")
-            job_state.append_log(f"   Episode ID:     {episode_id}")
-            job_state.append_log(f"   Media Provider: {media_provider}")
-            job_state.append_log(f"   Audio Provider: {active_audio}")
-            job_state.append_log(f"   AI Provider:    {active_ai} (Model: {ai_model if active_ai == 'gemini' else 'default'})")
-            job_state.append_log("================================================================================")
-
             try:
+                active_ai = ai_provider
+                active_audio = audio_provider
+                active_model = ai_model
+                job_state.append_log("================================================================================")
+                job_state.append_log(f"🚀 AUTO VOX PRODUCTION PIPELINE: {topic}")
+                job_state.append_log(f"   Episode ID:     {episode_id}")
+                job_state.append_log(f"   Media Provider: {media_provider}")
+                job_state.append_log(f"   Audio Provider: {active_audio}")
+                job_state.append_log(f"   AI Provider:    {active_ai} (Model: {active_model if active_ai == 'gemini' else 'default'})")
+                job_state.append_log("================================================================================")
+
                 from videotool.domain.narration import Narration, synthetic_word_timings
                 from videotool.pipeline.narration_intake import NarrationIntakeService
                 from videotool.pipeline.runner import PipelineRunner, EpisodeInput
@@ -598,12 +599,12 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
                     success = False
                     last_error = None
                     candidate_models = [
-                        ai_model,
+                        active_model,
                         "gemini-3.1-flash-lite",
                         "gemini-3.5-flash-lite",
                         "gemini-2.5-flash",
                         "gemini-flash-latest",
-                    ] if active_ai == "gemini" else [ai_model or "default"]
+                    ] if active_ai == "gemini" else [active_model or "default"]
 
                     unique_models = []
                     for m in candidate_models:
@@ -625,7 +626,7 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
                                 verifier_model=current_model if active_ai == "gemini" else None,
                             )
                             narration, fact_report = intake_svc.process(topic=topic)
-                            ai_model = current_model  # Update actual used model
+                            active_model = current_model  # Update actual used model
                             job_state.append_log(f"✓ Lời bình AI hoàn tất ({current_model}): {len(narration.text.split())} từ, {len(fact_report.claims)} sự kiện kiểm chứng")
                             success = True
                             break
@@ -686,7 +687,7 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
                     "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                     "media_provider": media_provider,
                     "audio_provider": active_audio,
-                    "ai_model": ai_model,
+                    "ai_model": active_model,
                 }
                 (ep_dir / "meta.json").write_text(json.dumps(meta_data, indent=2, ensure_ascii=False), encoding="utf-8")
                 self.store.save(episode_id, "narration", narration.to_dict())
@@ -703,7 +704,7 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
 
                 pipeline_success = False
                 res = None
-                pipeline_models = [ai_model, "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-2.5-flash"] if active_ai == "gemini" else [ai_model]
+                pipeline_models = [active_model, "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-2.5-flash"] if active_ai == "gemini" else [active_model]
                 unique_p_models = []
                 for m in pipeline_models:
                     if m and m not in unique_p_models:
@@ -772,10 +773,11 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
                         episode_id=episode_id,
                         store=self.store,
                         output_path=out_mp4,
-                        audio_provider_name=audio_provider if audio_provider != "none" else None,
+                        audio_provider_name=active_audio if active_audio != "none" else None,
                         voice=voice,
+                        progress_callback=job_state.append_log,
                     )
-                    job_state.append_log(f"🎉 RENDER HOÀN TẤT: {out_mp4.name} (Thời lượng: {render_res.duration_sec:.2f}s, Beats: {render_res.metadata.get('beats_rendered')})")
+                    job_state.append_log(f"🎉 RENDER HOÀN TẤT: {out_mp4.name} (Thời lượng: {render_res.duration_sec:.2f}s, Beats: {render_res.metadata.get('beats_rendered', len(plan.beats))})")
 
                 job_state.append_log("================================================================================")
                 job_state.append_log(f"✨ TẬP PHIM ĐÃ SẴN SÀNG! Vui lòng chọn '{episode_id}' trên thanh menu để xem.")
@@ -959,8 +961,9 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
         fixture_name = payload.get("fixture") or (next(iter(FIXTURES)) if FIXTURES else "")
         options = payload.get("options", {})
 
-        if fixture_name not in FIXTURES:
-            self._send_error_json(f"Fixture '{fixture_name}' not found", status=400)
+        ep_dir = self.store.episode_dir(fixture_name)
+        if fixture_name not in FIXTURES and not ep_dir.is_dir() and not (self.artifacts_root / fixture_name).is_dir():
+            self._send_error_json(f"Episode '{fixture_name}' not found", status=400)
             return
 
         job_id = f"job_{int(time.time() * 1000)}_{command_type}"

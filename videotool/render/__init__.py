@@ -39,7 +39,8 @@ def render_episode(episode_id: str, store: ArtifactStore, output_path: str | Pat
                    audio_provider_name: str | None = "silence",
                    click_track: bool = False,
                    voice: str | None = None,
-                   audio: NarrationAudio | None = None) -> RenderResult:
+                   audio: NarrationAudio | None = None,
+                   progress_callback: Any | None = None) -> RenderResult:
     """Convenience entry point: loads episode artifacts, builds frame plan, and renders video."""
     # Check that required artifacts exist
     timeline = store.load(episode_id, "timeline")
@@ -110,7 +111,7 @@ def render_episode(episode_id: str, store: ArtifactStore, output_path: str | Pat
     renderer = get_renderer(renderer_name)
     cache_dir = store.root / "media_cache"
 
-    return renderer.render(plan, output_path, cache_dir=cache_dir, audio=audio)
+    return renderer.render(plan, output_path, cache_dir=cache_dir, audio=audio, progress_callback=progress_callback)
 
 
 __all__ = [

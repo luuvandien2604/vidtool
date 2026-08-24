@@ -298,16 +298,18 @@ def main(argv: list[str] | None = None) -> int:
             from videotool.render.shooting_script import generate_shooting_script
 
             audio_provider_name = None if args.no_audio else args.audio_provider
+            out_target = store.root / f"{episode_id}.mp4" if args.out == "out.mp4" else Path(args.out)
             result = render_episode(
                 episode_id=episode_id,
                 store=store,
-                output_path=args.out,
+                output_path=out_target,
                 renderer_name=args.renderer,
                 audio_provider_name=audio_provider_name,
                 click_track=args.click_track,
                 voice=args.voice,
+                progress_callback=print,
             )
-            print(f"rendered {args.fixture} -> {result.output_path} ({result.duration_sec:.2f}s)")
+            print(f"🎉 RENDER HOÀN TẤT: {args.fixture} -> {result.output_path} ({result.duration_sec:.2f}s)")
 
             # Auto-generate shooting script alongside render
             try:

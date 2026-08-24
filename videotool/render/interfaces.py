@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Callable, Protocol
 
 if TYPE_CHECKING:
     from videotool.domain.narration import NarrationAudio
@@ -30,6 +30,7 @@ class Renderer(Protocol):
 
     def render(self, plan: EpisodeFramePlan, output_path: str | Path,
                cache_dir: str | Path | None = None,
-               audio: NarrationAudio | None = None) -> RenderResult:
+               audio: NarrationAudio | None = None,
+               progress_callback: Callable[[str], None] | None = None) -> RenderResult:
         """Render an EpisodeFramePlan to a media file."""
         ...
