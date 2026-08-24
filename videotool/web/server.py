@@ -28,6 +28,7 @@ from videotool.editorial.director.revision import RevisionService
 
 
 STATIC_DIR = Path(__file__).parent / "static"
+DELETED_FIXTURES: set[str] = set()
 
 
 class JobState:
@@ -221,7 +222,8 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
         # 6. API: Delete Episode Project
         delete_ep_match = re.match(r"^/api/episodes/([^/]+)/delete$", path)
         if delete_ep_match:
-            ep_name = delete_ep_match.group(1)
+            raw_name = delete_ep_match.group(1)
+            ep_name = urllib.parse.unquote(raw_name)
             self._handle_post_delete_episode(ep_name)
             return
 
@@ -295,11 +297,15 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
                 "overrides_count": len(overrides) if isinstance(overrides, list) else 0,
             }
 
-        # 1. Built-in fixtures
+        # 1. Built-in fixtures (only if not explicitly deleted)
         for name in sorted(FIXTURES):
+            if name in DELETED_FIXTURES:
+                continue
             try:
                 data = FIXTURES[name]()
                 ep_id = data["episode_id"]
+                if ep_id in DELETED_FIXTURES:
+                    continue
                 seen_ep_ids.add(ep_id)
                 seen_ep_ids.add(name)
                 stats = _extract_ep_stats(ep_id, name)
@@ -308,7 +314,7 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
                     "fixture_name": name,
                     "episode_id": ep_id,
                     "title": data.get("title", name.replace("_", " ").title()),
-                    "is_custom": False,
+                    "is_custom": True,
                     **stats,
                 })
             except Exception:
@@ -317,7 +323,7 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
         # 2. Custom created projects in artifacts/
         if self.artifacts_root.is_dir():
             for ep_dir in sorted(self.artifacts_root.iterdir(), key=lambda p: p.stat().st_mtime if p.is_dir() else 0, reverse=True):
-                if not ep_dir.is_dir() or ep_dir.name in seen_ep_ids or ep_dir.name.startswith((".", "media_", "tts_", "beat_")):
+                if not ep_dir.is_dir() or ep_dir.name in seen_ep_ids or ep_dir.name in DELETED_FIXTURES or ep_dir.name.startswith((".", "media_", "tts_", "beat_")):
                     continue
                 ep_id = ep_dir.name
                 meta_path = ep_dir / "meta.json"
@@ -347,12 +353,30 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
             self._send_error_json("Invalid episode ID", status=400)
             return
 
+        DELETED_FIXTURES.add(episode_id)
+        if episode_id == "berlin_wall":
+            DELETED_FIXTURES.add("berlin_wall_phase1")
+        elif episode_id == "berlin_wall_phase1":
+            DELETED_FIXTURES.add("berlin_wall")
+
         deleted_items = []
-        # Remove directory
+        # Remove primary directory
         ep_dir = self.store.episode_dir(episode_id)
         if ep_dir.is_dir():
             shutil.rmtree(ep_dir, ignore_errors=True)
             deleted_items.append(str(ep_dir))
+
+        # If fixture name matches a built-in alias, remove that directory too
+        if episode_id in FIXTURES:
+            try:
+                target_ep_id = FIXTURES[episode_id]()["episode_id"]
+                DELETED_FIXTURES.add(target_ep_id)
+                target_dir = self.store.episode_dir(target_ep_id)
+                if target_dir.is_dir():
+                    shutil.rmtree(target_dir, ignore_errors=True)
+                    deleted_items.append(str(target_dir))
+            except Exception:
+                pass
 
         # Remove standalone artifacts
         for pat in (
@@ -360,6 +384,7 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
             f"{episode_id}.mp4",
             f"{episode_id}_*.json",
             f"{episode_id}_*.md",
+            f"*{episode_id}*",
         ):
             for f in self.artifacts_root.glob(pat):
                 if f.is_file():

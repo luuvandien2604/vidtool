@@ -455,7 +455,7 @@
             📋 Kịch Bản
           </button>
           ${ep.has_video ? `<a href="/api/episodes/${ep.fixture_name}/video" target="_blank" download class="btn btn-secondary btn-xs" title="Tải file video">⬇️ Tải</a>` : ''}
-          ${ep.is_custom ? `<button class="btn btn-secondary btn-xs text-coral btn-delete-project" data-id="${ep.episode_id}" data-title="${ep.title}" title="Xóa dự án">🗑️</button>` : ''}
+          <button class="btn btn-secondary btn-xs text-coral btn-delete-project" data-id="${ep.fixture_name}" data-title="${ep.title}" title="Xóa dự án này">🗑️ Xóa</button>
         </div>
       `;
 
@@ -500,25 +500,39 @@
           e.stopPropagation();
           const targetId = btnDelete.getAttribute('data-id');
           const targetTitle = btnDelete.getAttribute('data-title');
-          if (!confirm(`Bạn có chắc chắn muốn xóa dự án "${targetTitle}" (${targetId}) không?`)) {
+          if (!confirm(`Bạn có chắc chắn muốn xóa vĩnh viễn dự án "${targetTitle}" (${targetId}) không?`)) {
             return;
           }
           try {
-            const res = await fetch(`/api/episodes/${targetId}/delete`, { method: 'POST' });
+            btnDelete.disabled = true;
+            btnDelete.textContent = 'Đang xóa...';
+            const res = await fetch(`/api/episodes/${encodeURIComponent(targetId)}/delete`, { method: 'POST' });
             const resData = await res.json();
             if (res.ok && resData.success) {
-              logTerminal(`✓ Đã xóa dự án: ${targetId}`, 'success');
-              if (state.currentFixture === targetId) {
-                state.currentFixture = 'berlin_wall';
+              logTerminal(`✓ Đã xóa vĩnh viễn dự án: ${targetTitle} (${targetId})`, 'success');
+              if (state.currentFixture === targetId || state.currentFixture === ep.episode_id) {
+                state.currentFixture = '';
               }
               await loadEpisodes();
-              await loadEpisodeStatus();
-              await loadShootingScript();
+              if (!state.currentFixture && state.rawEpisodes.length > 0) {
+                state.currentFixture = state.rawEpisodes[0].fixture_name;
+              }
+              if (state.currentFixture) {
+                if (el.episodeSelect) el.episodeSelect.value = state.currentFixture;
+                await loadEpisodeStatus();
+                await loadShootingScript();
+              } else {
+                renderEmptyStudioState();
+              }
             } else {
               alert(`Không thể xóa dự án: ${resData.error || 'Unknown error'}`);
+              btnDelete.disabled = false;
+              btnDelete.textContent = '🗑️ Xóa';
             }
           } catch (err) {
             alert(`Lỗi khi xóa dự án: ${err.message}`);
+            btnDelete.disabled = false;
+            btnDelete.textContent = '🗑️ Xóa';
           }
         });
       }
@@ -527,7 +541,30 @@
     });
   }
 
+  function renderEmptyStudioState() {
+    if (el.valEpisodeTitle) el.valEpisodeTitle.textContent = '(Chưa có dự án nào)';
+    if (el.valDuration) el.valDuration.textContent = '0:00.00';
+    if (el.valBeats) el.valBeats.textContent = '0';
+    if (el.valOverrides) el.valOverrides.textContent = '0';
+    if (el.valVideo) {
+      el.valVideo.textContent = 'Chưa có dự án';
+      el.valVideo.className = 'pill-value badge-neutral';
+    }
+    if (el.videoPlaceholder) el.videoPlaceholder.classList.remove('hidden');
+    if (el.mainVideo) el.mainVideo.removeAttribute('src');
+    if (el.btnDownloadVideo) el.btnDownloadVideo.classList.add('hidden');
+    if (el.beatTrack) el.beatTrack.innerHTML = '';
+    if (el.infoNarration) el.infoNarration.textContent = 'Vui lòng bấm "➕ Tạo Dự Án Mới" để bắt đầu sản xuất video.';
+    if (el.scriptTableBody) {
+      el.scriptTableBody.innerHTML = `<tr><td colspan="13" class="text-center">Chưa có dự án nào. Bấm "➕ Tạo Dự Án Mới" để bắt đầu.</td></tr>`;
+    }
+  }
+
   async function loadEpisodeStatus() {
+    if (!state.currentFixture) {
+      renderEmptyStudioState();
+      return;
+    }
     try {
       const res = await fetch(`/api/episodes/${state.currentFixture}/status`);
       if (!res.ok) throw new Error('Status fetch failed');
@@ -541,11 +578,12 @@
   }
 
   async function loadShootingScript() {
+    if (!state.currentFixture) return;
     try {
       const res = await fetch(`/api/episodes/${state.currentFixture}/shooting-script`);
       if (!res.ok) {
         if (el.scriptTableBody) {
-          el.scriptTableBody.innerHTML = `<tr><td colspan="13" class="text-center">Chưa có shooting script. Vui lòng bấm "Chạy Planning Pipeline" hoặc "Xuất JSON & Markdown".</td></tr>`;
+          el.scriptTableBody.innerHTML = `<tr><td colspan="13" class="text-center">Chưa có shooting script. Vui lòng bấm "Render Video" hoặc "Re-Plan".</td></tr>`;
         }
         return;
       }
@@ -1105,8 +1143,16 @@
   // ---------------------------------------------------------------------------
   async function init() {
     await loadEpisodes();
-    await loadEpisodeStatus();
-    await loadShootingScript();
+    if (state.rawEpisodes.length > 0) {
+      if (!state.currentFixture || !state.rawEpisodes.some(e => e.fixture_name === state.currentFixture)) {
+        state.currentFixture = state.rawEpisodes[0].fixture_name;
+      }
+      if (el.episodeSelect) el.episodeSelect.value = state.currentFixture;
+      await loadEpisodeStatus();
+      await loadShootingScript();
+    } else {
+      renderEmptyStudioState();
+    }
   }
 
   init();
