@@ -250,14 +250,22 @@ class FFmpegRenderer(Renderer):
         if audio is not None:
             if not audio.audio_path.exists():
                 raise FileNotFoundError(f"Narration audio file not found: {audio.audio_path}")
-            # Pre-mux duration assertion: fail loudly if audio duration and video plan disagree
+            # Pre-mux duration alignment: automatically align last beat if audio duration differs
             dur_delta = abs(float(audio.duration_sec) - float(plan.total_duration_sec))
             if dur_delta > 0.05:
-                raise ValueError(
-                    f"Audio and video duration mismatch: audio duration is {audio.duration_sec:.3f}s "
-                    f"but video frame plan duration is {plan.total_duration_sec:.3f}s "
-                    f"(delta: {dur_delta:.3f}s exceeds 0.05s tolerance)"
-                )
+                if plan.beats:
+                    diff = float(audio.duration_sec) - float(plan.total_duration_sec)
+                    last_beat = plan.beats[-1]
+                    new_dur = max(0.5, float(last_beat.duration_sec) + diff)
+                    last_beat.duration_sec = new_dur
+                    last_beat.end_sec = last_beat.start_sec + new_dur
+                    plan.total_duration_sec = float(audio.duration_sec)
+                else:
+                    raise ValueError(
+                        f"Audio and video duration mismatch: audio duration is {audio.duration_sec:.3f}s "
+                        f"but video frame plan duration is {plan.total_duration_sec:.3f}s "
+                        f"(delta: {dur_delta:.3f}s exceeds 0.05s tolerance)"
+                    )
 
         cache = MediaCache(cache_dir) if cache_dir else None
         warnings: list[str] = []

@@ -439,11 +439,12 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
 
         def _worker() -> None:
             active_ai = ai_provider
+            active_audio = audio_provider
             job_state.append_log("================================================================================")
             job_state.append_log(f"🚀 AUTO VOX PRODUCTION PIPELINE: {topic}")
             job_state.append_log(f"   Episode ID:     {episode_id}")
             job_state.append_log(f"   Media Provider: {media_provider}")
-            job_state.append_log(f"   Audio Provider: {audio_provider}")
+            job_state.append_log(f"   Audio Provider: {active_audio}")
             job_state.append_log(f"   AI Provider:    {active_ai} (Model: {ai_model if active_ai == 'gemini' else 'default'})")
             job_state.append_log("================================================================================")
 
@@ -483,16 +484,35 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
                     job_state.append_log(f"📝 [1/4] Sử dụng kịch bản lời bình do người dùng nhập ({len(script_text.split())} từ)...")
                     narration = Narration(text=script_text, words=synthetic_word_timings(script_text))
 
-                # Save meta.json and narration.json
+                # 1.5. Azure Speech Synthesis & Alignment (if requested)
                 ep_dir = self.store.episode_dir(episode_id)
                 ep_dir.mkdir(parents=True, exist_ok=True)
+
+                if active_audio == "azure":
+                    job_state.append_log(f"🎙️ [1.5/4] Đang tổng hợp giọng đọc AI Azure Speech ({voice})...")
+                    try:
+                        import shutil
+                        from videotool.providers.azure_speech import synthesize_azure_speech
+                        tts_cache_dir = self.artifacts_root / "tts_cache"
+                        audio_wav, timing = synthesize_azure_speech(narration, voice=voice, cache_dir=tts_cache_dir)
+                        # Update narration with real word-level timings from Azure Speech
+                        narration = Narration(text=narration.text, words=timing.words)
+                        self.store.save(episode_id, "narration_timing", timing.to_dict())
+                        audio_dest = ep_dir / "narration_audio.wav"
+                        shutil.copy(audio_wav, audio_dest)
+                        job_state.append_log(f"✓ Giọng đọc hoàn tất ({timing.duration_sec:.2f}s, {len(timing.words)} từ)")
+                    except Exception as e:
+                        job_state.append_log(f"⚠️ Azure Speech error ({e}). Tự động dùng Silence provider...")
+                        active_audio = "silence"
+
+                # Save meta.json and narration.json
                 meta_data = {
                     "episode_id": episode_id,
                     "topic": topic,
                     "title": topic,
                     "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                     "media_provider": media_provider,
-                    "audio_provider": audio_provider,
+                    "audio_provider": active_audio,
                     "ai_model": ai_model,
                 }
                 (ep_dir / "meta.json").write_text(json.dumps(meta_data, indent=2, ensure_ascii=False), encoding="utf-8")
