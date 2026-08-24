@@ -93,6 +93,8 @@
     selectMediaProvider: document.getElementById('selectMediaProvider'),
     selectAudioProvider: document.getElementById('selectAudioProvider'),
     selectAiProvider: document.getElementById('selectAiProvider'),
+    selectAiModel: document.getElementById('selectAiModel'),
+    groupAiModel: document.getElementById('groupAiModel'),
     selectVoice: document.getElementById('selectVoice'),
     checkAutoRender: document.getElementById('checkAutoRender'),
   };
@@ -229,6 +231,17 @@
     });
   });
 
+  // Toggle AI Model dropdown based on Provider selection
+  if (el.selectAiProvider && el.groupAiModel) {
+    el.selectAiProvider.addEventListener('change', () => {
+      if (el.selectAiProvider.value === 'gemini') {
+        el.groupAiModel.style.display = 'block';
+      } else {
+        el.groupAiModel.style.display = 'none';
+      }
+    });
+  }
+
   // Submit New Project Form
   if (el.formNewProject) {
     el.formNewProject.addEventListener('submit', async (e) => {
@@ -248,6 +261,7 @@
       const mediaProvider = el.selectMediaProvider ? el.selectMediaProvider.value : 'wikimedia';
       const audioProvider = el.selectAudioProvider ? el.selectAudioProvider.value : 'silence';
       const aiProvider = el.selectAiProvider ? el.selectAiProvider.value : 'gemini';
+      const aiModel = (el.selectAiModel && aiProvider === 'gemini') ? el.selectAiModel.value : 'gemini-3.1-flash-lite';
       const voice = el.selectVoice ? el.selectVoice.value : 'vi-VN-HoaiMyNeural';
       const autoRender = el.checkAutoRender ? el.checkAutoRender.checked : true;
 
@@ -260,6 +274,7 @@
       logTerminal(`   Mã định danh tự tạo:  ${epId}`, 'info');
       logTerminal(`   Kịch bản lời bình:    ${scriptMode === 'ai' ? 'AI Tự động nghiên cứu & kiểm chứng' : 'Nhập thủ công (' + scriptText.length + ' ký tự)'}`, 'info');
       logTerminal(`   Nguồn ảnh tư liệu:    ${mediaProvider} | Âm thanh: ${audioProvider}`, 'info');
+      logTerminal(`   AI Provider / Model:  ${aiProvider} (${aiModel})`, 'info');
       logTerminal(`================================================================================`, 'cmd');
 
       if (el.jobStatusPill) {
@@ -284,6 +299,7 @@
             media_provider: mediaProvider,
             audio_provider: audioProvider,
             ai_provider: aiProvider,
+            ai_model: aiModel,
             voice,
             auto_render: autoRender,
           }),

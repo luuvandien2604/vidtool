@@ -425,6 +425,7 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
         media_provider = payload.get("media_provider", "wikimedia")
         audio_provider = payload.get("audio_provider", "silence")
         ai_provider = payload.get("ai_provider", "gemini")
+        ai_model = payload.get("ai_model", "gemini-3.1-flash-lite").strip()
         mode = payload.get("mode", "final")
         auto_render = bool(payload.get("auto_render", True))
         voice = payload.get("voice", "vi-VN-HoaiMyNeural")
@@ -443,7 +444,7 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
             job_state.append_log(f"   Episode ID:     {episode_id}")
             job_state.append_log(f"   Media Provider: {media_provider}")
             job_state.append_log(f"   Audio Provider: {audio_provider}")
-            job_state.append_log(f"   AI Provider:    {active_ai}")
+            job_state.append_log(f"   AI Provider:    {active_ai} (Model: {ai_model if active_ai == 'gemini' else 'default'})")
             job_state.append_log("================================================================================")
 
             try:
@@ -455,13 +456,15 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
 
                 # 1. Narration Intake
                 if not script_text:
-                    job_state.append_log(f"📝 [1/4] Đang nghiên cứu & biên soạn kịch bản lời bình với AI ({active_ai})...")
+                    job_state.append_log(f"📝 [1/4] Đang nghiên cứu & biên soạn kịch bản lời bình với AI ({active_ai} / {ai_model})...")
                     try:
                         intake_svc = NarrationIntakeService(
                             writer_provider_name=active_ai,
                             verifier_provider_name=active_ai,
                             mode=mode,
                             allow_uncertain_claims=True,
+                            writer_model=ai_model if active_ai == "gemini" else None,
+                            verifier_model=ai_model if active_ai == "gemini" else None,
                         )
                         narration, fact_report = intake_svc.process(topic=topic)
                         job_state.append_log(f"✓ Lời bình hoàn tất: {len(narration.text.split())} từ, {len(fact_report.claims)} sự kiện kiểm chứng")
@@ -490,6 +493,7 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
                     "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                     "media_provider": media_provider,
                     "audio_provider": audio_provider,
+                    "ai_model": ai_model,
                 }
                 (ep_dir / "meta.json").write_text(json.dumps(meta_data, indent=2, ensure_ascii=False), encoding="utf-8")
                 self.store.save(episode_id, "narration", narration.to_dict())
@@ -501,6 +505,7 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
                     mode=mode,
                     editorial_ai_enabled=True,
                     editorial_ai_provider=active_ai,
+                    editorial_ai_model=ai_model if active_ai == "gemini" else None,
                 )
                 runner = PipelineRunner(self.store, policy=policy, media_config=media_config)
                 ep_input = EpisodeInput(

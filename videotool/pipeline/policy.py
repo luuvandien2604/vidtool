@@ -15,6 +15,7 @@ class ExecutionPolicy:
     cache_enabled: bool = True
     editorial_ai_enabled: bool = False
     editorial_ai_provider: str = "mock"
+    editorial_ai_model: str | None = None
 
     @property
     def allow_placeholders(self) -> bool:
@@ -33,4 +34,5 @@ class ExecutionPolicy:
             "allow_placeholders": self.allow_placeholders,
             "editorial_ai_enabled": self.editorial_ai_enabled,
             "editorial_ai_provider": self.editorial_ai_provider,
+            "editorial_ai_model": self.editorial_ai_model,
         }

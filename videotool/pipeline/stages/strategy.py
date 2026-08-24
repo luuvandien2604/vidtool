@@ -110,7 +110,10 @@ class VisualStrategyPlanStage(BasePipelineStage):
             )
             director = ctx.editorial_director
             if director is None:
-                provider = build_director_provider(ctx.policy.editorial_ai_provider)
+                kwargs = {}
+                if ctx.policy.editorial_ai_model:
+                    kwargs["model_name"] = ctx.policy.editorial_ai_model
+                provider = build_director_provider(ctx.policy.editorial_ai_provider, **kwargs)
                 director = EditorialDirector(provider=provider)
 
             # Running visual memory for request projection

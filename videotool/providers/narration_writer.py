@@ -219,8 +219,8 @@ class GeminiNarrationWriterProvider:
     def __init__(self, model: str | None = None, api_key: str | None = None, timeout_sec: float = 60.0):
         load_env_fallback()
         self.api_key = api_key or os.environ.get("GEMINI_API_KEY", "").strip()
-        # gemini-flash-latest is a Google-maintained alias that auto-updates to the current GA Flash model
-        self.model = model or os.environ.get("GEMINI_NARRATION_MODEL", "gemini-flash-latest")
+        # Prioritize explicit model argument, GEMINI_MODEL, GEMINI_NARRATION_MODEL, default to gemini-3.1-flash-lite (500 RPD Free tier)
+        self.model = model or os.environ.get("GEMINI_MODEL") or os.environ.get("GEMINI_NARRATION_MODEL") or "gemini-3.1-flash-lite"
         self.timeout_sec = timeout_sec
 
     def write(

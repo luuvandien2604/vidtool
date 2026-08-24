@@ -81,11 +81,15 @@ class NarrationIntakeService:
         verifier_provider_name: str = "gemini",
         mode: str = "draft",
         allow_uncertain_claims: bool = False,
+        writer_model: str | None = None,
+        verifier_model: str | None = None,
     ):
         self.writer_provider_name = writer_provider_name
         self.verifier_provider_name = verifier_provider_name
         self.mode = mode
         self.allow_uncertain_claims = allow_uncertain_claims
+        self.writer_model = writer_model
+        self.verifier_model = verifier_model
 
     def process(
         self,
@@ -97,7 +101,8 @@ class NarrationIntakeService:
     ) -> tuple[Narration, FactVerificationReport]:
         """Generate narration, extract claims, verify against web search, evaluate gate, save artifacts."""
         # 1. Write narration & extract claims
-        writer = build_narration_writer(self.writer_provider_name)
+        writer_kwargs = {"model": self.writer_model} if self.writer_model else {}
+        writer = build_narration_writer(self.writer_provider_name, **writer_kwargs)
         narration, claims = writer.write(
             topic=topic,
             target_duration_sec=target_duration_sec,
@@ -105,7 +110,8 @@ class NarrationIntakeService:
         )
 
         # 2. Fact Verification
-        verifier = build_fact_verifier(self.verifier_provider_name)
+        verifier_kwargs = {"model": self.verifier_model} if self.verifier_model else {}
+        verifier = build_fact_verifier(self.verifier_provider_name, **verifier_kwargs)
         verifications = verifier.verify(
             topic=topic,
             narration=narration,

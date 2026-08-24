@@ -495,11 +495,28 @@
           <div class="form-group">
             <label class="form-label" for="selectAiProvider">AI Editorial Provider:</label>
             <select id="selectAiProvider" class="form-select">
-              <option value="gemini" selected>🤖 Gemini Pro (AI Thật)</option>
-              <option value="mock">🧪 Mock Provider</option>
+              <option value="gemini" selected>🤖 Google Gemini (AI Thật)</option>
+              <option value="claude">🧠 Anthropic Claude (AI Thật)</option>
+              <option value="mock">🧪 Mock / Offline (Không tốn Quota)</option>
             </select>
           </div>
 
+          <div class="form-group" id="groupAiModel">
+            <label class="form-label" for="selectAiModel">Model AI (Tối ưu Free Tier):</label>
+            <select id="selectAiModel" class="form-select">
+              <option value="gemini-3.1-flash-lite" selected>🚀 Gemini 3.1 Flash Lite (500 RPD / 15 RPM - Khuyên Dùng Free)</option>
+              <option value="gemini-3.5-flash-lite">🚀 Gemini 3.5 Flash Lite (500 RPD / 15 RPM - Tối Ưu Free)</option>
+              <option value="gemini-2.5-flash-lite">⚡ Gemini 2.5 Flash Lite (20 RPD / 10 RPM)</option>
+              <option value="gemini-2.5-flash">⚡ Gemini 2.5 Flash (20 RPD / 5 RPM)</option>
+              <option value="gemini-3.5-flash">⚡ Gemini 3.5 Flash (20 RPD / 5 RPM)</option>
+              <option value="gemini-3.6-flash">⚡ Gemini 3.6 Flash (20 RPD / 5 RPM)</option>
+              <option value="gemini-3.7-flash">⚡ Gemini 3.7 Flash (20 RPD / 5 RPM)</option>
+              <option value="gemini-flash-latest">🌐 gemini-flash-latest (Google Auto Alias)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row-2">
           <div class="form-group">
             <label class="form-label" for="selectVoice">Giọng đọc (nếu dùng Azure):</label>
             <select id="selectVoice" class="form-select">
@@ -509,13 +526,13 @@
               <option value="en-US-GuyNeural">🇺🇸 en-US-GuyNeural (Nam)</option>
             </select>
           </div>
-        </div>
 
-        <div class="form-group checkbox-group">
-          <label class="checkbox-label">
-            <input type="checkbox" id="checkAutoRender" checked>
-            <span>⚡ <strong>Tự động Render Video MP4</strong> ngay sau khi hoàn tất Planning</span>
-          </label>
+          <div class="form-group checkbox-group" style="padding-top: 1.8rem;">
+            <label class="checkbox-label">
+              <input type="checkbox" id="checkAutoRender" checked>
+              <span>⚡ <strong>Tự động Render MP4</strong> sau khi lập kế hoạch</span>
+            </label>
+          </div>
         </div>
 
         <div class="modal-actions">

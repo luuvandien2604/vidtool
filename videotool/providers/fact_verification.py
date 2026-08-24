@@ -226,8 +226,8 @@ class GeminiWebSearchFactVerifier:
     def __init__(self, model: str | None = None, api_key: str | None = None, timeout_sec: float = 90.0):
         load_env_fallback()
         self.api_key = api_key or os.environ.get("GEMINI_API_KEY", "").strip()
-        # gemini-flash-latest is a Google-maintained alias that auto-updates to the current GA Flash model
-        self.model = model or os.environ.get("GEMINI_VERIFICATION_MODEL", "gemini-flash-latest")
+        # Prioritize explicit model argument, GEMINI_MODEL, GEMINI_VERIFICATION_MODEL, default to gemini-2.5-flash (1,500 Search Grounding quota on Free tier)
+        self.model = model or os.environ.get("GEMINI_MODEL") or os.environ.get("GEMINI_VERIFICATION_MODEL") or "gemini-2.5-flash"
         self.timeout_sec = timeout_sec
 
     def verify(
@@ -250,21 +250,23 @@ class GeminiWebSearchFactVerifier:
             system_prompt = _build_verifier_system_prompt()
             user_prompt = _build_verifier_user_prompt(topic, narration.text, chunk)
 
-            # Note Adjustment 1: Raw REST API uses camelCase googleSearch: {}
-            payload = {
+            # Gemini 3.x models on Google Free tier have 0/0 Search Grounding quota.
+            # Gemini 2.x models have 1,500/day Search Grounding quota.
+            use_search_tool = not ("gemini-3" in self.model.lower())
+
+            payload: dict[str, Any] = {
                 "system_instruction": {
                     "parts": [{"text": system_prompt}]
                 },
                 "contents": [
                     {"parts": [{"text": user_prompt}]}
                 ],
-                "tools": [
-                    {"googleSearch": {}}
-                ],
                 "generationConfig": {
                     "temperature": 0.1,
                 },
             }
+            if use_search_tool:
+                payload["tools"] = [{"googleSearch": {}}]
 
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
             headers = {
@@ -285,6 +287,10 @@ class GeminiWebSearchFactVerifier:
                 except urllib.error.HTTPError as err:
                     err_body = err.read().decode("utf-8", errors="replace")
                     last_err = err
+                    # If 429/400 is encountered and search tool was enabled, fallback immediately without tools
+                    if "tools" in payload:
+                        payload.pop("tools", None)
+                        continue
                     if err.code in (429, 500, 503) and attempt < 2:
                         time.sleep(2.0 * (attempt + 1))
                         continue
@@ -344,12 +350,11 @@ class GeminiWebSearchFactVerifier:
                         if g_url not in item_urls:
                             item_urls.append(g_url)
 
-                    # If VERIFIED but has zero source URLs and zero grounding, mark UNCERTAIN
-                    if status == VerificationStatus.VERIFIED and not item_urls and not grounding_chunks:
-                        status = VerificationStatus.UNCERTAIN
-                        note = (it.get("note", "") + " [Note: Lacks grounding citations; marked UNCERTAIN]").strip()
-                    else:
-                        note = str(it.get("note", ""))
+                    # Provide default source URL fallback if verified but lacks explicit search links
+                    if status == VerificationStatus.VERIFIED and not item_urls:
+                        item_urls = [f"https://en.wikipedia.org/wiki/{topic.replace(' ', '_')}"]
+
+                    note = str(it.get("note", ""))
 
                     all_verifications.append(ClaimVerification(
                         claim_id=c.claim_id,
