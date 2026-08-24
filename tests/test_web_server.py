@@ -214,3 +214,15 @@ def test_create_custom_topic_episode_api(running_server):
     ep_ids = [ep["episode_id"] for ep in ep_data["episodes"]]
     assert "test_titanic" in ep_ids
 
+    # Delete episode
+    status, del_res = _post(f"{base_url}/api/episodes/test_titanic/delete", {})
+    assert status == 200
+    assert del_res["success"] is True
+    assert del_res["episode_id"] == "test_titanic"
+
+    # Verify no longer in list
+    status, ep_data2, _ = _get(f"{base_url}/api/episodes")
+    assert status == 200
+    ep_ids2 = [ep["episode_id"] for ep in ep_data2["episodes"]]
+    assert "test_titanic" not in ep_ids2
+

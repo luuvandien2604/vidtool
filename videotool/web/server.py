@@ -218,6 +218,13 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
             self._handle_post_execute_command(payload)
             return
 
+        # 6. API: Delete Episode Project
+        delete_ep_match = re.match(r"^/api/episodes/([^/]+)/delete$", path)
+        if delete_ep_match:
+            ep_name = delete_ep_match.group(1)
+            self._handle_post_delete_episode(ep_name)
+            return
+
         self._send_error_json(f"Unknown POST endpoint: {path}", status=404)
 
     # -------------------------------------------------------------------------
@@ -228,6 +235,66 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
         episodes = []
         seen_ep_ids = set()
 
+        def _extract_ep_stats(ep_id: str, name: str) -> dict:
+            ep_dir = self.store.episode_dir(ep_id)
+            meta = {}
+            meta_path = ep_dir / "meta.json"
+            if meta_path.is_file():
+                try:
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                except Exception:
+                    pass
+
+            timeline_path = ep_dir / "timeline.json"
+            duration_sec = 0.0
+            if timeline_path.is_file():
+                try:
+                    tl = json.loads(timeline_path.read_text(encoding="utf-8"))
+                    duration_sec = float(tl.get("total_duration_sec", 0.0))
+                except Exception:
+                    pass
+
+            beats_path = ep_dir / "semantic_beats.json"
+            beat_count = 0
+            if beats_path.is_file():
+                try:
+                    bts = json.loads(beats_path.read_text(encoding="utf-8"))
+                    beat_count = len(bts) if isinstance(bts, list) else 0
+                except Exception:
+                    pass
+
+            video_path = _get_episode_video_path(self.artifacts_root, ep_id, name)
+            video_size_mb = None
+            if video_path and video_path.is_file():
+                try:
+                    video_size_mb = round(video_path.stat().st_size / (1024 * 1024), 2)
+                except Exception:
+                    pass
+
+            created_at = meta.get("created_at")
+            if not created_at and ep_dir.is_dir():
+                try:
+                    created_at = datetime.datetime.fromtimestamp(ep_dir.stat().st_mtime, tz=datetime.timezone.utc).isoformat()
+                except Exception:
+                    pass
+
+            has_script = (self.artifacts_root / f"{name}_shooting_script.json").is_file() or (ep_dir / "shooting_script.json").is_file()
+            overrides = self.store.load(ep_id, "editorial_overrides") or []
+
+            return {
+                "duration_sec": duration_sec,
+                "beat_count": beat_count,
+                "video_size_mb": video_size_mb,
+                "created_at": created_at,
+                "media_provider": meta.get("media_provider", "wikimedia"),
+                "audio_provider": meta.get("audio_provider", "silence"),
+                "ai_model": meta.get("ai_model", ""),
+                "has_timeline": timeline_path.is_file(),
+                "has_video": video_path is not None,
+                "has_shooting_script": has_script,
+                "overrides_count": len(overrides) if isinstance(overrides, list) else 0,
+            }
+
         # 1. Built-in fixtures
         for name in sorted(FIXTURES):
             try:
@@ -235,27 +302,21 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
                 ep_id = data["episode_id"]
                 seen_ep_ids.add(ep_id)
                 seen_ep_ids.add(name)
-                video_path = _get_episode_video_path(self.artifacts_root, ep_id, name)
-                has_timeline = (self.store.episode_dir(ep_id) / "timeline.json").is_file()
-                has_script = (self.artifacts_root / f"{name}_shooting_script.json").is_file() or (self.store.episode_dir(ep_id) / "shooting_script.json").is_file()
-                overrides = self.store.load(ep_id, "editorial_overrides") or []
+                stats = _extract_ep_stats(ep_id, name)
 
                 episodes.append({
                     "fixture_name": name,
                     "episode_id": ep_id,
                     "title": data.get("title", name.replace("_", " ").title()),
-                    "has_timeline": has_timeline,
-                    "has_video": video_path is not None,
-                    "has_shooting_script": has_script,
-                    "overrides_count": len(overrides) if isinstance(overrides, list) else 0,
                     "is_custom": False,
+                    **stats,
                 })
             except Exception:
                 continue
 
         # 2. Custom created projects in artifacts/
         if self.artifacts_root.is_dir():
-            for ep_dir in sorted(self.artifacts_root.iterdir()):
+            for ep_dir in sorted(self.artifacts_root.iterdir(), key=lambda p: p.stat().st_mtime if p.is_dir() else 0, reverse=True):
                 if not ep_dir.is_dir() or ep_dir.name in seen_ep_ids or ep_dir.name.startswith((".", "media_", "tts_", "beat_")):
                     continue
                 ep_id = ep_dir.name
@@ -268,23 +329,51 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
                     except Exception:
                         pass
 
-                video_path = _get_episode_video_path(self.artifacts_root, ep_id, ep_id)
-                has_timeline = (ep_dir / "timeline.json").is_file()
-                has_script = (self.artifacts_root / f"{ep_id}_shooting_script.json").is_file() or (ep_dir / "shooting_script.json").is_file()
-                overrides = self.store.load(ep_id, "editorial_overrides") or []
+                stats = _extract_ep_stats(ep_id, ep_id)
 
                 episodes.append({
                     "fixture_name": ep_id,
                     "episode_id": ep_id,
                     "title": title,
-                    "has_timeline": has_timeline,
-                    "has_video": video_path is not None,
-                    "has_shooting_script": has_script,
-                    "overrides_count": len(overrides) if isinstance(overrides, list) else 0,
                     "is_custom": True,
+                    **stats,
                 })
 
         self._send_json({"episodes": episodes})
+
+    def _handle_post_delete_episode(self, episode_id: str) -> None:
+        import shutil
+        if not episode_id or episode_id in ("..", "/", "\\") or ".." in episode_id:
+            self._send_error_json("Invalid episode ID", status=400)
+            return
+
+        deleted_items = []
+        # Remove directory
+        ep_dir = self.store.episode_dir(episode_id)
+        if ep_dir.is_dir():
+            shutil.rmtree(ep_dir, ignore_errors=True)
+            deleted_items.append(str(ep_dir))
+
+        # Remove standalone artifacts
+        for pat in (
+            f"{episode_id}_shooting_script.*",
+            f"{episode_id}.mp4",
+            f"{episode_id}_*.json",
+            f"{episode_id}_*.md",
+        ):
+            for f in self.artifacts_root.glob(pat):
+                if f.is_file():
+                    try:
+                        f.unlink()
+                        deleted_items.append(f.name)
+                    except Exception:
+                        pass
+
+        self._send_json({
+            "success": True,
+            "episode_id": episode_id,
+            "deleted_items": deleted_items,
+        })
 
     def _handle_get_episode_status(self, fixture_name: str) -> None:
         title = fixture_name.replace("_", " ").title()

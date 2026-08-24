@@ -5,6 +5,7 @@
   // Application State
   const state = {
     currentFixture: 'berlin_wall',
+    rawEpisodes: [],
     status: null,
     scriptData: null,
     activeProposal: null,
@@ -17,7 +18,15 @@
   const el = {
     episodeSelect: document.getElementById('episodeSelect'),
     btnRefresh: document.getElementById('btnRefresh'),
+    valEpisodeTitle: document.getElementById('valEpisodeTitle'),
+    btnDownloadVideo: document.getElementById('btnDownloadVideo'),
+    navProjectBadge: document.getElementById('navProjectBadge'),
     
+    // Projects Library
+    projectSearch: document.getElementById('projectSearch'),
+    projectsGrid: document.getElementById('projectsGrid'),
+    btnNewProjectFromList: document.getElementById('btnNewProjectFromList'),
+
     // Status Ribbon
     valDuration: document.getElementById('valDuration'),
     valBeats: document.getElementById('valBeats'),
@@ -54,7 +63,6 @@
     scriptSearch: document.getElementById('scriptSearch'),
     filterBeatSelect: document.getElementById('filterBeatSelect'),
     scriptTableBody: document.getElementById('scriptTableBody'),
-    jsonViewer: document.getElementById('jsonViewer'),
 
     // Revision Studio
     feedbackInput: document.getElementById('feedbackInput'),
@@ -345,19 +353,178 @@
       const res = await fetch('/api/episodes');
       if (!res.ok) return;
       const data = await res.json();
+      state.rawEpisodes = data.episodes || [];
+
+      if (el.navProjectBadge) {
+        el.navProjectBadge.textContent = state.rawEpisodes.length;
+      }
+
       if (el.episodeSelect) {
         el.episodeSelect.innerHTML = '';
-        data.episodes.forEach(ep => {
+        state.rawEpisodes.forEach(ep => {
           const opt = document.createElement('option');
           opt.value = ep.fixture_name;
-          opt.textContent = `${ep.fixture_name} (${ep.title})`;
+          opt.textContent = `${ep.title} (${ep.fixture_name})`;
           if (ep.fixture_name === state.currentFixture) opt.selected = true;
           el.episodeSelect.appendChild(opt);
         });
       }
+
+      renderProjectsLibrary();
     } catch (err) {
       logTerminal('Error loading episodes: ' + err, 'error');
     }
+  }
+
+  function renderProjectsLibrary(searchQuery = '') {
+    if (!el.projectsGrid) return;
+    el.projectsGrid.innerHTML = '';
+
+    const query = (searchQuery || (el.projectSearch ? el.projectSearch.value : '')).toLowerCase().trim();
+    const filtered = state.rawEpisodes.filter(ep => {
+      if (!query) return true;
+      return (
+        ep.title.toLowerCase().includes(query) ||
+        ep.episode_id.toLowerCase().includes(query) ||
+        ep.fixture_name.toLowerCase().includes(query)
+      );
+    });
+
+    if (!filtered.length) {
+      el.projectsGrid.innerHTML = `
+        <div style="grid-column: 1 / -1; padding: 3rem; text-align: center; color: var(--text-muted);">
+          <p style="font-size: 1.1rem; margin-bottom: 0.5rem;">Không tìm thấy dự án nào phù hợp.</p>
+          <button id="btnEmptyCreate" class="btn btn-accent btn-sm">➕ Tạo Dự Án Mới</button>
+        </div>
+      `;
+      const btn = document.getElementById('btnEmptyCreate');
+      if (btn) btn.addEventListener('click', openNewProjectModal);
+      return;
+    }
+
+    filtered.forEach(ep => {
+      const card = document.createElement('div');
+      const isCurrent = ep.fixture_name === state.currentFixture;
+      card.className = `project-card ${isCurrent ? 'current-active' : ''}`;
+
+      const videoTag = ep.has_video
+        ? `<span class="meta-tag tag-video-ready">✅ MP4 Sẵn sàng (${ep.video_size_mb || 0} MB)</span>`
+        : `<span class="meta-tag tag-video-none">⏳ Chưa render MP4</span>`;
+
+      const audioBadge = ep.audio_provider === 'azure' ? '🎙️ Azure Speech (AI)' : (ep.audio_provider || 'silence');
+      const mediaBadge = ep.media_provider === 'wikimedia' ? '🏛️ Wikimedia Commons' : (ep.media_provider || 'fixture');
+
+      card.innerHTML = `
+        <div class="project-card-header">
+          <h3 class="project-card-title">${ep.title}</h3>
+          <span class="project-card-id">${ep.episode_id}</span>
+        </div>
+
+        <div class="project-card-stats">
+          <div class="stat-row">
+            <span class="stat-label">Thời lượng</span>
+            <span class="stat-value text-gold">${formatTime(ep.duration_sec)}</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Phân cảnh</span>
+            <span class="stat-value">${ep.beat_count || 0} Beats</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Âm thanh</span>
+            <span class="stat-value" style="font-size: 0.75rem;">${audioBadge}</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Tư liệu</span>
+            <span class="stat-value" style="font-size: 0.75rem;">${mediaBadge}</span>
+          </div>
+        </div>
+
+        <div class="project-card-meta-tags">
+          ${videoTag}
+          ${ep.ai_model ? `<span class="meta-tag">🤖 ${ep.ai_model}</span>` : ''}
+        </div>
+
+        <div class="project-card-actions">
+          <button class="btn btn-primary btn-xs btn-open-project" data-id="${ep.fixture_name}">
+            ▶️ Mở Studio
+          </button>
+          <button class="btn btn-accent btn-xs btn-render-project" data-id="${ep.fixture_name}">
+            ⚡ Render
+          </button>
+          <button class="btn btn-secondary btn-xs btn-script-project" data-id="${ep.fixture_name}">
+            📋 Kịch Bản
+          </button>
+          ${ep.has_video ? `<a href="/api/episodes/${ep.fixture_name}/video" target="_blank" download class="btn btn-secondary btn-xs" title="Tải file video">⬇️ Tải</a>` : ''}
+          ${ep.is_custom ? `<button class="btn btn-secondary btn-xs text-coral btn-delete-project" data-id="${ep.episode_id}" data-title="${ep.title}" title="Xóa dự án">🗑️</button>` : ''}
+        </div>
+      `;
+
+      // Event listeners on card buttons
+      const btnOpen = card.querySelector('.btn-open-project');
+      if (btnOpen) {
+        btnOpen.addEventListener('click', async () => {
+          state.currentFixture = ep.fixture_name;
+          if (el.episodeSelect) el.episodeSelect.value = ep.fixture_name;
+          await loadEpisodeStatus();
+          await loadShootingScript();
+          renderProjectsLibrary();
+          switchToTab('tabStudio');
+        });
+      }
+
+      const btnRender = card.querySelector('.btn-render-project');
+      if (btnRender) {
+        btnRender.addEventListener('click', async () => {
+          state.currentFixture = ep.fixture_name;
+          if (el.episodeSelect) el.episodeSelect.value = ep.fixture_name;
+          await loadEpisodeStatus();
+          executeCommand('render', { audio_provider: ep.audio_provider || 'azure' });
+        });
+      }
+
+      const btnScript = card.querySelector('.btn-script-project');
+      if (btnScript) {
+        btnScript.addEventListener('click', async () => {
+          state.currentFixture = ep.fixture_name;
+          if (el.episodeSelect) el.episodeSelect.value = ep.fixture_name;
+          await loadEpisodeStatus();
+          await loadShootingScript();
+          renderProjectsLibrary();
+          switchToTab('tabScript');
+        });
+      }
+
+      const btnDelete = card.querySelector('.btn-delete-project');
+      if (btnDelete) {
+        btnDelete.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const targetId = btnDelete.getAttribute('data-id');
+          const targetTitle = btnDelete.getAttribute('data-title');
+          if (!confirm(`Bạn có chắc chắn muốn xóa dự án "${targetTitle}" (${targetId}) không?`)) {
+            return;
+          }
+          try {
+            const res = await fetch(`/api/episodes/${targetId}/delete`, { method: 'POST' });
+            const resData = await res.json();
+            if (res.ok && resData.success) {
+              logTerminal(`✓ Đã xóa dự án: ${targetId}`, 'success');
+              if (state.currentFixture === targetId) {
+                state.currentFixture = 'berlin_wall';
+              }
+              await loadEpisodes();
+              await loadEpisodeStatus();
+              await loadShootingScript();
+            } else {
+              alert(`Không thể xóa dự án: ${resData.error || 'Unknown error'}`);
+            }
+          } catch (err) {
+            alert(`Lỗi khi xóa dự án: ${err.message}`);
+          }
+        });
+      }
+
+      el.projectsGrid.appendChild(card);
+    });
   }
 
   async function loadEpisodeStatus() {
@@ -380,16 +547,12 @@
         if (el.scriptTableBody) {
           el.scriptTableBody.innerHTML = `<tr><td colspan="13" class="text-center">Chưa có shooting script. Vui lòng bấm "Chạy Planning Pipeline" hoặc "Xuất JSON & Markdown".</td></tr>`;
         }
-        if (el.jsonViewer) el.jsonViewer.textContent = '{}';
         return;
       }
       const data = await res.json();
       state.scriptData = data.script;
       renderBeatTimeline(data.script);
       renderShootingScriptTable(data.script);
-      if (el.jsonViewer) {
-        el.jsonViewer.textContent = JSON.stringify(data.script, null, 2);
-      }
     } catch (err) {
       logTerminal('Error loading shooting script: ' + err, 'error');
     }
@@ -411,6 +574,7 @@
   // ---------------------------------------------------------------------------
 
   function renderStatus(status) {
+    if (el.valEpisodeTitle) el.valEpisodeTitle.textContent = status.title || state.currentFixture;
     if (el.valDuration) el.valDuration.textContent = formatTime(status.total_duration_sec);
     if (el.valBeats) el.valBeats.textContent = status.beat_count;
     if (el.valOverrides) el.valOverrides.textContent = status.overrides_count;
@@ -423,6 +587,10 @@
       }
       if (el.videoPlaceholder) el.videoPlaceholder.classList.add('hidden');
       if (el.mainVideo) el.mainVideo.src = `/api/episodes/${state.currentFixture}/video`;
+      if (el.btnDownloadVideo) {
+        el.btnDownloadVideo.href = `/api/episodes/${state.currentFixture}/video`;
+        el.btnDownloadVideo.classList.remove('hidden');
+      }
     } else {
       if (el.valVideo) {
         el.valVideo.textContent = 'Chưa render';
@@ -430,6 +598,9 @@
       }
       if (el.videoPlaceholder) el.videoPlaceholder.classList.remove('hidden');
       if (el.mainVideo) el.mainVideo.removeAttribute('src');
+      if (el.btnDownloadVideo) {
+        el.btnDownloadVideo.classList.add('hidden');
+      }
     }
 
     if (el.valAudio) {
@@ -916,6 +1087,16 @@
   if (el.scriptSearch) {
     el.scriptSearch.addEventListener('input', () => {
       if (state.scriptData) renderShootingScriptTable(state.scriptData);
+    });
+  }
+  if (el.projectSearch) {
+    el.projectSearch.addEventListener('input', (e) => {
+      renderProjectsLibrary(e.target.value);
+    });
+  }
+  if (el.btnNewProjectFromList) {
+    el.btnNewProjectFromList.addEventListener('click', () => {
+      openNewProjectModal();
     });
   }
 

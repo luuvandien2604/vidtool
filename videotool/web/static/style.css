@@ -1063,3 +1063,155 @@ body {
   padding-top: 0.5rem;
   border-top: 1px solid var(--border-subtle);
 }
+
+/* ==========================================================================
+   Project Management (Projects Library)
+   ========================================================================== */
+.projects-container {
+  padding: 1.25rem;
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+}
+
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 1.25rem;
+}
+
+.project-card {
+  background: var(--bg-card-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1rem;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.project-card:hover {
+  border-color: var(--border-focus);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.project-card.current-active {
+  border-color: var(--vox-gold);
+  background: linear-gradient(180deg, rgba(230, 194, 128, 0.06) 0%, var(--bg-card-elevated) 100%);
+}
+
+.project-card.current-active::before {
+  content: "ĐANG CHỌN";
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: #000;
+  background: var(--vox-gold);
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-xs);
+  letter-spacing: 0.05em;
+}
+
+.project-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-right: 4rem;
+}
+
+.project-card-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-main);
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.project-card-id {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.project-card-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.6rem;
+  background: var(--bg-app);
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+.stat-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.stat-label {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stat-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.project-card-meta-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.meta-tag {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-xs);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+}
+
+.meta-tag.tag-video-ready {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border-color: rgba(16, 185, 129, 0.3);
+  font-weight: 600;
+}
+
+.meta-tag.tag-video-none {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.25);
+}
+
+.project-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-subtle);
+  align-items: center;
+}
+
+.project-card-actions .btn {
+  font-size: 0.75rem;
+  padding: 0.4rem 0.65rem;
+}
+
+.card-actions-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
