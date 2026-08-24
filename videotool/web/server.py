@@ -595,29 +595,64 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
 
                 # 1. Narration Intake
                 if not script_text:
-                    job_state.append_log(f"📝 [1/4] Đang nghiên cứu & biên soạn kịch bản lời bình với AI ({active_ai} / {ai_model})...")
-                    try:
-                        intake_svc = NarrationIntakeService(
-                            writer_provider_name=active_ai,
-                            verifier_provider_name=active_ai,
-                            mode=mode,
-                            allow_uncertain_claims=True,
-                            writer_model=ai_model if active_ai == "gemini" else None,
-                            verifier_model=ai_model if active_ai == "gemini" else None,
-                        )
-                        narration, fact_report = intake_svc.process(topic=topic)
-                        job_state.append_log(f"✓ Lời bình hoàn tất: {len(narration.text.split())} từ, {len(fact_report.claims)} sự kiện kiểm chứng")
-                    except Exception as e:
-                        job_state.append_log(f"⚠️ AI {active_ai} giới hạn quota ({e}). Tự động dùng Heuristic Script để hoàn tất...")
-                        intake_svc = NarrationIntakeService(
-                            writer_provider_name="mock",
-                            verifier_provider_name="mock",
-                            mode=mode,
-                            allow_uncertain_claims=True,
-                        )
-                        narration, fact_report = intake_svc.process(topic=topic)
-                        active_ai = "mock"
-                        job_state.append_log(f"✓ Lời bình hoàn tất: {len(narration.text.split())} từ")
+                    success = False
+                    last_error = None
+                    candidate_models = [
+                        ai_model,
+                        "gemini-3.1-flash-lite",
+                        "gemini-3.5-flash-lite",
+                        "gemini-2.5-flash",
+                        "gemini-flash-latest",
+                    ] if active_ai == "gemini" else [ai_model or "default"]
+
+                    unique_models = []
+                    for m in candidate_models:
+                        if m and m not in unique_models:
+                            unique_models.append(m)
+
+                    narration = None
+                    fact_report = None
+
+                    for m_idx, current_model in enumerate(unique_models):
+                        job_state.append_log(f"📝 [1/4] Đang nghiên cứu & biên soạn kịch bản lời bình với AI ({active_ai} / {current_model})...")
+                        try:
+                            intake_svc = NarrationIntakeService(
+                                writer_provider_name=active_ai,
+                                verifier_provider_name=active_ai,
+                                mode=mode,
+                                allow_uncertain_claims=True,
+                                writer_model=current_model if active_ai == "gemini" else None,
+                                verifier_model=current_model if active_ai == "gemini" else None,
+                            )
+                            narration, fact_report = intake_svc.process(topic=topic)
+                            ai_model = current_model  # Update actual used model
+                            job_state.append_log(f"✓ Lời bình AI hoàn tất ({current_model}): {len(narration.text.split())} từ, {len(fact_report.claims)} sự kiện kiểm chứng")
+                            success = True
+                            break
+                        except Exception as e:
+                            last_error = e
+                            err_str = str(e)
+                            if "503" in err_str or "high demand" in err_str.lower():
+                                job_state.append_log(f"⚠️ Model {current_model} đang quá tải cao (503 High Demand).")
+                            elif "429" in err_str or "quota" in err_str.lower() or "rate" in err_str.lower():
+                                job_state.append_log(f"⚠️ Model {current_model} đã chạm giới hạn quota (429 Rate Limit).")
+                            else:
+                                job_state.append_log(f"⚠️ Model {current_model} gặp lỗi: {err_str[:120]}...")
+
+                            if m_idx < len(unique_models) - 1:
+                                next_model = unique_models[m_idx + 1]
+                                job_state.append_log(f"🔄 Đang tự động chuyển sang model AI dự phòng: {next_model}...")
+
+                    if not success or narration is None:
+                        job_state.append_log("================================================================================")
+                        job_state.append_log(f"❌ KHÔNG THỂ KẾT NỐI AI ({active_ai}): {last_error}")
+                        job_state.append_log("💡 HƯỚNG DẪN KHẮC PHỤC:")
+                        job_state.append_log("   1. Model bạn chọn đang bị Google giới hạn hoặc quá tải. Hãy thử 'Gemini 3.1 Flash Lite' (500 RPD).")
+                        job_state.append_log("   2. Hoặc kiểm tra lại GEMINI_API_KEY.")
+                        job_state.append_log("   3. Vui lòng bấm '➕ Tạo Dự Án Mới', chọn model 'Gemini 3.1 Flash Lite' và tạo lại.")
+                        job_state.append_log("================================================================================")
+                        job_state.finish(exit_code=1)
+                        return
                 else:
                     job_state.append_log(f"📝 [1/4] Sử dụng kịch bản lời bình do người dùng nhập ({len(script_text.split())} từ)...")
                     narration = Narration(text=script_text, words=synthetic_word_timings(script_text))
@@ -659,30 +694,42 @@ class VideoToolRequestHandler(BaseHTTPRequestHandler):
                 # 2. Planning Pipeline
                 job_state.append_log(f"⚙️ [2/4] Chạy Planning Pipeline (Bố cục, Bàn cắt dán, Tư liệu: {media_provider})...")
                 media_config = MediaAcquisitionConfig(provider=media_provider)
-                policy = ExecutionPolicy(
-                    mode=mode,
-                    editorial_ai_enabled=True,
-                    editorial_ai_provider=active_ai,
-                    editorial_ai_model=ai_model if active_ai == "gemini" else None,
-                )
-                runner = PipelineRunner(self.store, policy=policy, media_config=media_config)
                 ep_input = EpisodeInput(
                     episode_id=episode_id,
                     subject=topic,
                     narration=narration,
                     catalog=[],
                 )
-                try:
-                    res = runner.run(ep_input)
-                except Exception as run_err:
-                    job_state.append_log(f"⚠️ Lỗi xử lý AI ({run_err}). Tự động chuyển sang Mock Editorial để hoàn thành...")
-                    policy = ExecutionPolicy(
-                        mode=mode,
-                        editorial_ai_enabled=True,
-                        editorial_ai_provider="mock",
-                    )
-                    runner = PipelineRunner(self.store, policy=policy, media_config=media_config)
-                    res = runner.run(ep_input)
+
+                pipeline_success = False
+                res = None
+                pipeline_models = [ai_model, "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-2.5-flash"] if active_ai == "gemini" else [ai_model]
+                unique_p_models = []
+                for m in pipeline_models:
+                    if m and m not in unique_p_models:
+                        unique_p_models.append(m)
+
+                for p_model in unique_p_models:
+                    try:
+                        policy = ExecutionPolicy(
+                            mode=mode,
+                            editorial_ai_enabled=True,
+                            editorial_ai_provider=active_ai,
+                            editorial_ai_model=p_model if active_ai == "gemini" else None,
+                        )
+                        runner = PipelineRunner(self.store, policy=policy, media_config=media_config)
+                        res = runner.run(ep_input)
+                        pipeline_success = True
+                        break
+                    except Exception as run_err:
+                        job_state.append_log(f"⚠️ Lỗi Planning với model {p_model}: {run_err}")
+
+                if not pipeline_success or res is None:
+                    job_state.append_log(f"❌ Planning Pipeline không thành công với các model AI thật.")
+                    job_state.append_log("💡 Gợi ý: Vui lòng thử lại với model 'Gemini 3.1 Flash Lite' (500 RPD).")
+                    job_state.finish(exit_code=1)
+                    return
+
                 job_state.append_log(f"✓ Planning hoàn tất: {len(res.beats)} Beats, {len(res.compositions)} Visual Compositions (Status: {res.ok})")
 
                 # 3. Generate Shooting Script

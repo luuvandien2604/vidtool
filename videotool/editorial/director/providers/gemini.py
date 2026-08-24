@@ -108,8 +108,31 @@ class GeminiEditorialDirectorProvider:
             method="POST",
         )
 
-        with urllib.request.urlopen(req, timeout=self.timeout_sec) as resp:
-            resp_data = json.loads(resp.read().decode("utf-8"))
+        resp_data = None
+        last_err = None
+        import time
+
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout_sec) as resp:
+                    resp_data = json.loads(resp.read().decode("utf-8"))
+                    break
+            except urllib.error.HTTPError as err:
+                err_body = err.read().decode("utf-8", errors="replace")
+                last_err = err
+                if err.code in (429, 500, 503) and attempt < 2:
+                    time.sleep(1.5 * (attempt + 1))
+                    continue
+                raise RuntimeError(f"Gemini Director API error ({err.code}): {err_body}") from err
+            except Exception as err:
+                last_err = err
+                if attempt < 2:
+                    time.sleep(1.5 * (attempt + 1))
+                    continue
+                raise RuntimeError(f"Gemini Director network failure: {err}") from err
+
+        if resp_data is None:
+            raise RuntimeError(f"Gemini Director failed after 3 attempts: {last_err}")
 
         # Extract text from response candidates
         candidates = resp_data.get("candidates", [])
