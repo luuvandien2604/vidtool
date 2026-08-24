@@ -555,6 +555,33 @@
     </div>
   </div>
 
+  <!-- Modal: Xác Nhận Xóa Dự Án (Reliable In-App Confirmation) -->
+  <div id="modalConfirmDelete" class="modal-overlay hidden" style="display: none;">
+    <div class="modal-card" style="max-width: 480px;">
+      <div class="modal-head">
+        <div class="modal-title-group">
+          <span class="modal-icon text-coral">🗑️</span>
+          <h2 class="modal-heading">Xác Nhận Xóa Dự Án</h2>
+        </div>
+        <button id="btnCloseDeleteModal" type="button" class="btn-close" title="Đóng">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 0.95rem; line-height: 1.5; margin-bottom: 0.75rem; color: var(--text-main);">
+          Bạn có chắc chắn muốn xóa vĩnh viễn dự án <strong id="deleteTargetTitle" class="text-gold">--</strong> (<code id="deleteTargetId" class="text-dim">--</code>)?
+        </p>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1.25rem; background: rgba(255, 94, 77, 0.08); padding: 0.6rem; border-radius: var(--radius-xs); border: 1px solid rgba(255, 94, 77, 0.2);">
+          ⚠️ Toàn bộ video MP4, audio lời bình, kịch bản phân cảnh shooting script của dự án này sẽ bị xóa sạch khỏi thư mục lưu trữ.
+        </p>
+        <div class="modal-actions">
+          <button type="button" id="btnCancelDeleteModal" class="btn btn-secondary">Hủy bỏ</button>
+          <button type="button" id="btnConfirmDeleteAction" class="btn btn-accent" style="background: var(--vox-coral); border-color: var(--vox-coral); font-weight: 700;">
+            🗑️ Xóa Vĩnh Viễn
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="/app.js"></script>
 </body>
 </html>

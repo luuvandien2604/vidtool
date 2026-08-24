@@ -105,6 +105,14 @@
     groupAiModel: document.getElementById('groupAiModel'),
     selectVoice: document.getElementById('selectVoice'),
     checkAutoRender: document.getElementById('checkAutoRender'),
+
+    // Delete Confirmation Modal
+    modalConfirmDelete: document.getElementById('modalConfirmDelete'),
+    deleteTargetTitle: document.getElementById('deleteTargetTitle'),
+    deleteTargetId: document.getElementById('deleteTargetId'),
+    btnCloseDeleteModal: document.getElementById('btnCloseDeleteModal'),
+    btnCancelDeleteModal: document.getElementById('btnCancelDeleteModal'),
+    btnConfirmDeleteAction: document.getElementById('btnConfirmDeleteAction'),
   };
 
   // Helper: Format Seconds to M:SS.SS
@@ -496,48 +504,80 @@
 
       const btnDelete = card.querySelector('.btn-delete-project');
       if (btnDelete) {
-        btnDelete.addEventListener('click', async (e) => {
+        btnDelete.addEventListener('click', (e) => {
           e.stopPropagation();
           const targetId = btnDelete.getAttribute('data-id');
           const targetTitle = btnDelete.getAttribute('data-title');
-          if (!confirm(`Bạn có chắc chắn muốn xóa vĩnh viễn dự án "${targetTitle}" (${targetId}) không?`)) {
-            return;
-          }
-          try {
-            btnDelete.disabled = true;
-            btnDelete.textContent = 'Đang xóa...';
-            const res = await fetch(`/api/episodes/${encodeURIComponent(targetId)}/delete`, { method: 'POST' });
-            const resData = await res.json();
-            if (res.ok && resData.success) {
-              logTerminal(`✓ Đã xóa vĩnh viễn dự án: ${targetTitle} (${targetId})`, 'success');
-              if (state.currentFixture === targetId || state.currentFixture === ep.episode_id) {
-                state.currentFixture = '';
-              }
-              await loadEpisodes();
-              if (!state.currentFixture && state.rawEpisodes.length > 0) {
-                state.currentFixture = state.rawEpisodes[0].fixture_name;
-              }
-              if (state.currentFixture) {
-                if (el.episodeSelect) el.episodeSelect.value = state.currentFixture;
-                await loadEpisodeStatus();
-                await loadShootingScript();
-              } else {
-                renderEmptyStudioState();
-              }
-            } else {
-              alert(`Không thể xóa dự án: ${resData.error || 'Unknown error'}`);
-              btnDelete.disabled = false;
-              btnDelete.textContent = '🗑️ Xóa';
-            }
-          } catch (err) {
-            alert(`Lỗi khi xóa dự án: ${err.message}`);
-            btnDelete.disabled = false;
-            btnDelete.textContent = '🗑️ Xóa';
-          }
+          openDeleteModal(targetId, targetTitle);
         });
       }
 
       el.projectsGrid.appendChild(card);
+    });
+  }
+
+  function openDeleteModal(targetId, targetTitle) {
+    state.pendingDelete = { id: targetId, title: targetTitle };
+    if (el.deleteTargetTitle) el.deleteTargetTitle.textContent = targetTitle;
+    if (el.deleteTargetId) el.deleteTargetId.textContent = targetId;
+    if (el.modalConfirmDelete) {
+      el.modalConfirmDelete.classList.remove('hidden');
+      el.modalConfirmDelete.style.display = 'flex';
+    }
+  }
+
+  function closeDeleteModal() {
+    state.pendingDelete = null;
+    if (el.modalConfirmDelete) {
+      el.modalConfirmDelete.classList.add('hidden');
+      el.modalConfirmDelete.style.display = 'none';
+    }
+  }
+
+  if (el.btnCloseDeleteModal) el.btnCloseDeleteModal.addEventListener('click', closeDeleteModal);
+  if (el.btnCancelDeleteModal) el.btnCancelDeleteModal.addEventListener('click', closeDeleteModal);
+  if (el.modalConfirmDelete) {
+    el.modalConfirmDelete.addEventListener('click', (e) => {
+      if (e.target === el.modalConfirmDelete) closeDeleteModal();
+    });
+  }
+
+  if (el.btnConfirmDeleteAction) {
+    el.btnConfirmDeleteAction.addEventListener('click', async () => {
+      if (!state.pendingDelete) return;
+      const { id, title } = state.pendingDelete;
+      el.btnConfirmDeleteAction.disabled = true;
+      el.btnConfirmDeleteAction.textContent = 'Đang xóa...';
+
+      try {
+        const res = await fetch(`/api/episodes/${encodeURIComponent(id)}/delete`, { method: 'POST' });
+        const resData = await res.json();
+        if (res.ok && resData.success) {
+          logTerminal(`✓ Đã xóa vĩnh viễn dự án: ${title} (${id})`, 'success');
+          closeDeleteModal();
+          if (state.currentFixture === id) {
+            state.currentFixture = '';
+          }
+          await loadEpisodes();
+          if (!state.currentFixture && state.rawEpisodes.length > 0) {
+            state.currentFixture = state.rawEpisodes[0].fixture_name;
+          }
+          if (state.currentFixture) {
+            if (el.episodeSelect) el.episodeSelect.value = state.currentFixture;
+            await loadEpisodeStatus();
+            await loadShootingScript();
+          } else {
+            renderEmptyStudioState();
+          }
+        } else {
+          alert(`Không thể xóa dự án: ${resData.error || 'Unknown error'}`);
+        }
+      } catch (err) {
+        alert(`Lỗi mạng khi xóa dự án: ${err.message}`);
+      } finally {
+        el.btnConfirmDeleteAction.disabled = false;
+        el.btnConfirmDeleteAction.textContent = '🗑️ Xóa Vĩnh Viễn';
+      }
     });
   }
 
