@@ -1039,20 +1039,29 @@
 
   function startLogPolling(jobId, onComplete = null) {
     if (state.pollingTimer) clearInterval(state.pollingTimer);
+    state.logOffset = 0;
 
     state.pollingTimer = setInterval(async () => {
       try {
-        const res = await fetch(`/api/commands/jobs/${jobId}?offset=${state.logOffset}`);
+        const res = await fetch(`/api/commands/jobs/${encodeURIComponent(jobId)}?offset=${state.logOffset}`);
         if (!res.ok) return;
         const job = await res.json();
 
         if (job.lines && job.lines.length) {
           job.lines.forEach(line => {
             let type = 'info';
-            if (line.startsWith('$') || line.startsWith('===')) type = 'cmd';
-            else if (line.toLowerCase().includes('error') || line.toLowerCase().includes('failed') || line.includes('❌')) type = 'error';
-            else if (line.toLowerCase().includes('rendered') || line.toLowerCase().includes('passed') || line.toLowerCase().includes('generated') || line.includes('🎉') || line.includes('✓')) type = 'success';
-            else if (line.toLowerCase().includes('warn') || line.startsWith('📝') || line.startsWith('⚙️') || line.startsWith('📋') || line.startsWith('🎬')) type = 'warn';
+            if (line.includes('[AI_REQUEST]') || line.includes('[NỘI DUNG GỬI CHO AI]')) type = 'ai-req';
+            else if (line.includes('[AI_RESPONSE]') || line.includes('[NỘI DUNG AI TRẢ VỀ]')) type = 'ai-res';
+            else if (line.includes('[DECISION]') || line.includes('[EDITORIAL]')) type = 'decision';
+            else if (line.includes('[DOMAIN]') || line.includes('[VALIDATION]') || line.includes('[ĐÁNH GIÁ MỨC ĐỘ ĐẠT]')) type = 'domain';
+            else if (line.includes('[ASSET]')) type = 'asset';
+            else if (line.includes('[FFMPEG')) type = 'ffmpeg';
+            else if (line.includes('[RENDER]') || line.includes('[MOTION]')) type = 'render';
+            else if (line.includes('[STAGE') || line.startsWith('STAGE ') || line.startsWith('╔═') || line.startsWith('┌─') || line.startsWith('$') || line.startsWith('===')) type = 'stage';
+            else if (line.includes('[CACHE]') || line.includes('[PERFORMANCE]')) type = 'perf';
+            else if (line.toLowerCase().includes('error') || line.toLowerCase().includes('failed') || line.includes('❌') || line.includes('[ERROR]')) type = 'error';
+            else if (line.toLowerCase().includes('rendered') || line.toLowerCase().includes('passed') || line.toLowerCase().includes('generated') || line.includes('🎉') || line.includes('✓') || line.includes('[SUCCESS]')) type = 'success';
+            else if (line.toLowerCase().includes('warn') || line.includes('[WARNING]') || line.startsWith('📝') || line.startsWith('⚙️') || line.startsWith('📋') || line.startsWith('🎬')) type = 'warn';
 
             logTerminal(line, type);
           });

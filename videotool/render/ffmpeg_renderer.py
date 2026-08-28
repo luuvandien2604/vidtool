@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 import xml.sax.saxutils as saxutils
 from pathlib import Path
 from typing import Any
@@ -160,7 +161,8 @@ class FFmpegRenderer(Renderer):
             input_idx += 1
 
         # Process per-beat text elements (labels, quotes, timeline dates) via ASS
-        if beat.text_elements:
+        # Note: paper_collage_hero renders all typography directly inside the high-res SVG overlay
+        if beat.text_elements and beat.visual_family != "paper_collage_hero":
             ass_lines = [
                 "[Script Info]",
                 "ScriptType: v4.00+",
@@ -198,6 +200,19 @@ class FFmpegRenderer(Renderer):
             filter_chains.append(f"{current_layer}ass='{ass_escaped}'{next_layer}")
             current_layer = next_layer
 
+        from videotool.observability import LogLevel, get_logger
+        logger = get_logger()
+
+        for m_elem in beat.media_elements:
+            logger._emit(
+                LogLevel.RENDER,
+                f"Layer '{m_elem.element_id}' | Type: {m_elem.media_kind} [{m_elem.role}] | Bounds: {m_elem.bounds_px.width}x{m_elem.bounds_px.height} at ({m_elem.bounds_px.x},{m_elem.bounds_px.y}) | Motion: {m_elem.camera_motion}"
+            )
+
+        if beat.text_elements:
+            for te in beat.text_elements:
+                logger.log_typography(te.element_id, te.text, "DejaVu Sans", te.bounds_px.height)
+
         # Final output format filter
         filter_chains.append(f"{current_layer}format=yuv420p[vout]")
 
@@ -220,14 +235,25 @@ class FFmpegRenderer(Renderer):
             str(out_clip),
         ]
 
+        logger.log_ffmpeg_command(cmd, beat_id=beat.beat_id)
+        t_start = time.time()
         res = subprocess.run(cmd, capture_output=True, text=True)
+        dur_render = time.time() - t_start
+
         if res.returncode != 0:
+            logger._emit(LogLevel.ERROR, f"FFmpeg error on beat {beat.beat_id}:\n{res.stderr}")
             raise RuntimeError(
                 f"FFmpeg failed rendering beat {beat.beat_id}:\n"
                 f"Command: {' '.join(cmd)}\n"
                 f"Stderr: {res.stderr}\n"
             )
 
+        logger.log_ffmpeg_result(
+            exit_code=0,
+            duration_sec=dur_render,
+            output_path=str(out_clip),
+            size_bytes=out_clip.stat().st_size if out_clip.exists() else 0,
+        )
         return out_clip
 
     def render(self, plan: EpisodeFramePlan, output_path: str | Path,
@@ -274,6 +300,12 @@ class FFmpegRenderer(Renderer):
         if progress_callback:
             progress_callback(f"🎬 Bắt đầu render {total_beats} beats (Tổng thời lượng: {plan.total_duration_sec:.2f}s)...")
 
+        from videotool.observability import LogLevel, get_logger
+        logger = get_logger()
+        logger.section_header(f"RENDER VIDEO MASTER ({total_beats} Beats, {plan.total_duration_sec:.2f}s)")
+
+        render_start_time = time.time()
+
         with tempfile.TemporaryDirectory(prefix="vidtool_render_") as tmp_str:
             work_dir = Path(tmp_str)
 
@@ -290,6 +322,7 @@ class FFmpegRenderer(Renderer):
                     cached = beat_clip_cache.lookup(beat_hash, beat.beat_id)
 
                 if cached is not None:
+                    logger._emit(LogLevel.CACHE, f"HIT [Beat {i+1}/{total_beats}] Tái sử dụng clip: {beat.beat_id} ({beat.duration_sec:.1f}s)")
                     if progress_callback:
                         progress_callback(f"⚡ [Beat {i+1}/{total_beats}] Cache Hit: Tái sử dụng phân cảnh {beat.beat_id} ({beat.duration_sec:.1f}s)")
                     # Cache hit: copy cached clip to work dir
@@ -297,6 +330,7 @@ class FFmpegRenderer(Renderer):
                     shutil.copy2(str(cached.clip_path), str(local_clip))
                     beat_clips.append(local_clip)
                 else:
+                    logger._emit(LogLevel.RENDER, f"Dựng hình [Beat {i+1}/{total_beats}] {beat.beat_id} ({beat.duration_sec:.1f}s)...")
                     if progress_callback:
                         progress_callback(f"⏳ [Beat {i+1}/{total_beats}] Đang dựng hình & hiệu ứng motion {beat.beat_id} ({beat.duration_sec:.1f}s)...")
                     # Cache miss: render from scratch
@@ -324,8 +358,10 @@ class FFmpegRenderer(Renderer):
                 "-c", "copy",
                 str(raw_concat_mp4),
             ]
+            logger.log_ffmpeg_command(concat_cmd, beat_id="LOSSLESS_CONCAT")
             concat_res = subprocess.run(concat_cmd, capture_output=True, text=True)
             if concat_res.returncode != 0:
+                logger._emit(LogLevel.ERROR, f"FFmpeg concat demuxer failed:\n{concat_res.stderr}")
                 raise RuntimeError(
                     f"FFmpeg concat demuxer failed:\n{concat_res.stderr}"
                 )
@@ -367,11 +403,15 @@ class FFmpegRenderer(Renderer):
 
             burn_cmd.append(str(out_dest))
 
+            logger.log_ffmpeg_command(burn_cmd, beat_id="SUBTITLES_AND_AUDIO_MUX")
             burn_res = subprocess.run(burn_cmd, capture_output=True, text=True)
             if burn_res.returncode != 0:
+                logger._emit(LogLevel.ERROR, f"FFmpeg subtitle burn-in / audio mux failed:\n{burn_res.stderr}")
                 raise RuntimeError(
                     f"FFmpeg subtitle burn-in / audio mux failed:\n{burn_res.stderr}"
                 )
+
+        total_render_duration = time.time() - render_start_time
 
         # Step 4: Validate output with ffprobe
         meta = probe_media_file(out_dest)
@@ -383,6 +423,18 @@ class FFmpegRenderer(Renderer):
             raise RuntimeError("Render verification failed: expected audio stream in output MP4, but none found")
         elif audio is None and audio_streams:
             raise RuntimeError("Render verification failed: expected no audio stream in output MP4, but audio stream was found")
+
+        logger.log_domain_validation(
+            "Final MP4 Video & Audio Validation",
+            True,
+            f"Thời lượng thực tế: {actual_duration:.2f}s, Audio: {'Có' if audio_streams else 'Silent'}"
+        )
+        logger.log_ffmpeg_result(
+            exit_code=0,
+            duration_sec=total_render_duration,
+            output_path=str(out_dest),
+            size_bytes=out_dest.stat().st_size if out_dest.exists() else 0,
+        )
 
         # Collect cache stats
         cache_stats: dict[str, Any] = {}

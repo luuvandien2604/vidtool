@@ -20,11 +20,13 @@ from .geographic_map import FAMILY as GEOGRAPHIC_MAP
 from .chronological_timeline import FAMILY as CHRONOLOGICAL_TIMELINE
 from .causal_network import FAMILY as CAUSAL_NETWORK
 from .full_frame_cinematic import FAMILY as FULL_FRAME_CINEMATIC
+from .paper_collage_hero import FAMILY as PAPER_COLLAGE_HERO
 
 FAMILIES: dict[str, CompositionFamily] = {
     f.family_id: f for f in (
         ARCHIVAL_SUBJECT, DOCUMENT_EVIDENCE, GEOGRAPHIC_MAP,
         CHRONOLOGICAL_TIMELINE, CAUSAL_NETWORK, FULL_FRAME_CINEMATIC,
+        PAPER_COLLAGE_HERO,
     )
 }
 

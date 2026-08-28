@@ -46,6 +46,7 @@ FAMILY_CASES = [
     ("chronological_timeline", SemanticFunction.CHRONOLOGY),
     ("causal_network", SemanticFunction.CAUSAL_EXPLANATION),
     ("full_frame_cinematic", SemanticFunction.ATMOSPHERE),
+    ("paper_collage_hero", SemanticFunction.ESTABLISHING_CONTEXT),
 ]
 
 

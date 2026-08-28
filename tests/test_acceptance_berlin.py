@@ -53,8 +53,7 @@ def test_multiple_visual_strategies_selected(berlin_run):
     strategies = {r.selected_strategy for r in berlin_run["result"].strategy_plan}
     families = {c.visual_family for c in berlin_run["result"].compositions}
     assert len(strategies) >= 6, f"only {len(strategies)} strategies selected"
-    assert len(families) >= 4, f"only {len(families)} visual families used"
-    assert len(families) == 6, "all six phase-1 families should trigger"
+    assert len(families) >= 6, "all visual families should trigger"
 
 
 def test_planner_persists_selection_reason(berlin_run):

@@ -70,33 +70,54 @@ def calculate_claim_spans(narration_text: str, claims_raw: list[dict]) -> list[F
     return results
 
 
+def _is_vietnamese(text: str) -> bool:
+    vi_chars = r"[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ]"
+    return bool(re.search(vi_chars, text, re.IGNORECASE))
+
+
 def _build_writer_system_prompt() -> str:
     return (
-        "You are an expert historical documentary scriptwriter and fact-checking researcher.\n"
-        "Your task is to write an engaging, high-impact documentary narration script for a given topic and target duration, "
-        "and systematically extract all atomic factual claims contained in the script.\n\n"
-        "Guidelines for Narration:\n"
-        "- Style: Cinematic, narrative-driven, authoritative, Vox/PBS Frontline style.\n"
-        "- Pace: Target roughly 130-150 spoken words per minute (e.g. 90 seconds = ~200-220 words).\n"
-        "- Accuracy: Use precise, historically verified facts, dates, named entities, and figures.\n\n"
+        "You are an award-winning historical documentary director and scriptwriter (Vox, Johnny Harris, PBS Frontline style).\n"
+        "Your task is to craft an immersive, multi-chapter documentary storyline, complete voiceover narration, "
+        "and factual claim extraction for the given topic.\n\n"
+        "Guidelines for Documentary Storytelling:\n"
+        "- Structure: Divide the documentary into 3-4 dynamic, compelling chapters (Setup -> Escalation/Turning Point -> Climax/Crisis -> Legacy).\n"
+        "- Tone: Gripping, cinematic, investigative, authentic, emotionally resonant.\n"
+        "- Pacing: Each chapter contains 1-3 atomic beats (approx. 4-10 seconds of spoken narration each).\n"
+        "- For each beat, provide:\n"
+        "  - 'headline': an array of 2 punchy, uppercase short lines (e.g. ['RỜI CẢNG SOUTHAMPTON', 'CHUYẾN ĐI ĐỊNH MỆNH']).\n"
+        "  - 'narration': spoken voiceover sentence in the requested language.\n"
+        "  - 'quote': a poignant historic quote or dramatic witness statement related to this beat.\n"
+        "  - 'quote_emphasis': array of 1-3 crucial words/phrases from the quote to highlight in gold.\n"
+        "  - 'milestone_date': specific year or date (e.g. '10/04/1912' or '1912').\n"
+        "  - 'milestone_title': main subject entity for fact badge (e.g. 'RMS TITANIC').\n"
+        "  - 'milestone_subtitle': location/role (e.g. 'CẢNG SOUTHAMPTON').\n\n"
         "Guidelines for Claim Extraction:\n"
-        "- Enumerate every atomic factual claim that can be verified independently against historical records or reference sources.\n"
-        "- Categories of claims:\n"
-        "  - DATE: specific years, months, days, timeframes (e.g., 'July 20, 1969', 'in the nineteenth century').\n"
-        "  - ENTITY: named historical figures, specific organizations, cities, countries, landmarks (e.g., 'Neil Armstrong', 'NASA').\n"
-        "  - NUMBER: statistics, quantities, distances, measurements (e.g., '384,400 kilometers', 'over one million').\n"
-        "  - QUOTE: attributed direct or indirect quotes (e.g., 'one small step for man').\n"
-        "  - EVENT: discrete occurrences, decisions, policy shifts (e.g., 'the spacecraft entered lunar orbit').\n"
-        "- For each claim, provide:\n"
-        "  - claim_id: 'claim_001', 'claim_002', etc.\n"
-        "  - text: the exact verbatim statement or phrase snippet from your written narration.\n"
-        "  - claim_type: 'DATE' | 'ENTITY' | 'NUMBER' | 'QUOTE' | 'EVENT'\n"
-        "- Do NOT guess or provide character offsets in the JSON. The Python layer calculates character offsets.\n\n"
+        "- Enumerate all atomic factual claims (DATE, ENTITY, NUMBER, QUOTE, EVENT) from the narration.\n\n"
         "Output strictly valid JSON with the following schema:\n"
         "{\n"
-        '  "narration": "Full narration text...",\n'
+        '  "title": "Title of documentary",\n'
+        '  "narration": "Full combined voiceover text across all chapters...",\n'
+        '  "chapters": [\n'
+        '    {\n'
+        '      "chapter_index": 1,\n'
+        '      "title": "Chương 1: Bình Minh Định Mệnh",\n'
+        '      "headline": ["RỜI CẢNG SOUTHAMPTON", "CON TÀU VĨ ĐẠI"],\n'
+        '      "beats": [\n'
+        '        {\n'
+        '          "headline": ["RỜI CẢNG SOUTHAMPTON", "CHUYẾN ĐI ĐỊNH MỆNH"],\n'
+        '          "narration": "Vào ngày 10 tháng 4 năm 1912...",\n'
+        '          "quote": "Kỳ tích hàng hải vĩ đại nhất của nhân loại",\n'
+        '          "quote_emphasis": ["Kỳ tích", "vĩ đại"],\n'
+        '          "milestone_date": "1912",\n'
+        '          "milestone_title": "RMS TITANIC",\n'
+        '          "milestone_subtitle": "CẢNG SOUTHAMPTON"\n'
+        '        }\n'
+        '      ]\n'
+        '    }\n'
+        '  ],\n'
         '  "claims": [\n'
-        '    {"claim_id": "claim_001", "text": "verbatim snippet", "claim_type": "DATE"}\n'
+        '    {"claim_id": "claim_001", "text": "verbatim text snippet", "claim_type": "DATE"}\n'
         '  ]\n'
         "}"
     )
@@ -105,12 +126,15 @@ def _build_writer_system_prompt() -> str:
 def _build_writer_user_prompt(topic: str, target_duration_sec: float | None, language: str) -> str:
     dur_sec = target_duration_sec or 60.0
     approx_words = int(dur_sec * 2.4)
-    lang_name = "Vietnamese" if language == "vi" else "English"
+    detected_vi = _is_vietnamese(topic) or language == "vi"
+    lang_name = "Vietnamese" if detected_vi else "English"
+    lang_code = "vi" if detected_vi else "en"
+
     return (
         f"Topic: {topic}\n"
-        f"Language: {lang_name} ({language})\n"
+        f"Language: {lang_name} ({lang_code})\n"
         f"Target Duration: {dur_sec:.1f} seconds (approx. {approx_words} spoken words/syllables)\n\n"
-        f"Write the documentary narration script in {lang_name} and extract all verifiable factual claims."
+        f"Write a rich, cinematic documentary script in {lang_name} organized into 3-4 structured chapters and beats."
     )
 
 

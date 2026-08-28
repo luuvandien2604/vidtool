@@ -55,6 +55,8 @@ STRATEGY_ASSET_NEEDS: dict[str, StrategyAssetPolicy] = {
     "map_plus_archival": StrategyAssetPolicy(all_of=("map",),
                                               any_of=("photo", "portrait")),
     "migration_flow_map": StrategyAssetPolicy(all_of=("map",)),
+    "paper_collage_opener": StrategyAssetPolicy(any_of=("photo", "portrait", "map", "document")),
+    "editorial_collage_quote": StrategyAssetPolicy(any_of=("photo", "portrait", "document")),
 }
 
 # kinds that can substitute for each other in a pinch

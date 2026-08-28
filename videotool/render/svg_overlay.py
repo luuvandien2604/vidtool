@@ -38,7 +38,9 @@ def generate_svg_overlay(connectors: list[ConnectorRenderElement] | None = None,
                          accent_color: str = "#FFD100",
                          visual_family: str | None = None,
                          theme: VoxTheme | None = None,
-                         include_text: bool = False) -> str | None:
+                         include_text: bool = False,
+                         collage_data: Any | None = None,
+                         tape_insets: list[dict] | None = None) -> str | None:
     """Generate an SVG vector overlay for a beat's connectors, timeline, and node cards.
 
     Strict Architectural Rule:
@@ -46,10 +48,15 @@ def generate_svg_overlay(connectors: list[ConnectorRenderElement] | None = None,
     exclusively use Vox design tokens (ACCENT_YELLOW for cards/milestones, ACCENT_BLUE
     for location badges) and are immune to per-episode art_direction overrides.
     """
+    if collage_data is not None:
+        from videotool.render.vox_collage import generate_vox_collage_overlay_svg
+        return generate_vox_collage_overlay_svg(collage_data, canvas_w=canvas_w, canvas_h=canvas_h, theme=theme)
+
     conns = connectors or []
     texts = text_elements or []
+    insets = tape_insets or []
 
-    if not conns and not texts:
+    if not conns and not texts and not insets:
         return None
 
     active_theme = theme or DEFAULT_VOX_THEME

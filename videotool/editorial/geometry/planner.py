@@ -151,6 +151,7 @@ class SemanticNodePlanner:
             "document_evidence": self._document,
             "archival_subject": self._character,
             "full_frame_cinematic": self._full_frame,
+            "paper_collage_hero": self._paper_collage,
         }
         builders.get(visual_family, self._full_frame)(
             ctx, assets, requirements)
@@ -161,6 +162,34 @@ class SemanticNodePlanner:
         order = [node.node_id for node in ctx.nodes]
         return SemanticNodePlanningResult(ctx.nodes, ctx.groups, ctx.edges,
                                           ctx.constraints, order)
+
+    def _paper_collage(self, ctx: _PlanningContext, assets: list[MediaAsset], requirements: list[AssetRequirement]) -> None:
+        del requirements
+        # 1. Primary Hero Node (Archival background)
+        hero_asset = next((a for a in assets if a.kind in ("photo", "portrait")), (assets[0] if assets else None))
+        hero_refs = ctx.beat.entities[:1] or ctx.beat.events[:1] or ctx.beat.locations[:1] or [ctx.beat.visual_intent]
+        ctx.add_node(VisualRole.HERO, hero_refs, asset=hero_asset, regions=[CanvasRegion.FULL])
+
+        # 2. Left Sidebar Chapter / Headline Label
+        title_ref = ctx.beat.entities[:1] or [ctx.beat.visual_intent]
+        ctx.add_node(VisualRole.LABEL, title_ref, text_role=TextRole.TITLE, regions=[CanvasRegion.TOP_LEFT, CanvasRegion.LEFT])
+
+        # 3. Gold Fact Date / Milestone Card (if dates exist)
+        if ctx.beat.dates:
+            ctx.add_node(VisualRole.DATE, ctx.beat.dates[:1], text_role=TextRole.DATE, regions=[CanvasRegion.BOTTOM_LEFT, CanvasRegion.LEFT])
+
+        # 4. Secondary Inset Card (Map, Document, or Secondary Photo)
+        secondary_asset = next((a for a in assets if a != hero_asset and a.kind in ("map", "document", "photo", "portrait")), None)
+        if secondary_asset:
+            role = VisualRole.MAP if secondary_asset.kind == "map" else (VisualRole.DOCUMENT if secondary_asset.kind == "document" else VisualRole.SUPPORT)
+            inset_refs = ctx.beat.locations[:1] or ctx.beat.entities[:1] or ["inset"]
+            ctx.add_node(role, inset_refs, asset=secondary_asset, regions=[CanvasRegion.TOP_RIGHT, CanvasRegion.RIGHT])
+
+        # 5. Quote Banner (if quote function or quote text present)
+        from videotool.domain.semantic_beat import SemanticFunction
+        if ctx.beat.semantic_function == SemanticFunction.QUOTE or '"' in ctx.beat.narration_text:
+            q_text = ctx.beat.narration_text
+            ctx.add_node(VisualRole.QUOTE, [q_text], text_role=TextRole.QUOTE, regions=[CanvasRegion.BOTTOM, CanvasRegion.CENTER])
 
     def _timeline(self, ctx, assets, requirements) -> None:
         del assets, requirements

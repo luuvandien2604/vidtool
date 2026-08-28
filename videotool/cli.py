@@ -30,11 +30,22 @@ _register()
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="videotool")
+    # Common parent parser for global observability flags
+    obs_parser = argparse.ArgumentParser(add_help=False)
+    obs_parser.add_argument("--verbose", "-v", action="store_true", default=False,
+                            help="enable detailed execution trace output")
+    obs_parser.add_argument("--trace", action="store_true", default=False,
+                            help="enable maximum low-level payload and state dumping")
+    obs_parser.add_argument("--trace-ffmpeg", action="store_true", default=False,
+                            help="output raw frame-by-frame FFmpeg encoding lines")
+    obs_parser.add_argument("--log-format", default="human", choices=["human", "json"],
+                            help="log format (default: human)")
+
+    parser = argparse.ArgumentParser(prog="videotool", parents=[obs_parser])
     subparsers = parser.add_subparsers(dest="command")
 
     # Subcommand: write-narration (Phase 4 AI Scriptwriter + Fact Verification)
-    write_parser = subparsers.add_parser("write-narration", help="generate documentary narration script and verify facts")
+    write_parser = subparsers.add_parser("write-narration", parents=[obs_parser], help="generate documentary narration script and verify facts")
     write_parser.add_argument("topic", help="documentary topic or title")
     write_parser.add_argument("--duration", type=float, default=60.0, help="target duration in seconds (default: 60.0)")
     write_parser.add_argument("--language", default="en", choices=["en", "vi"], help="script language (default: en)")
@@ -51,14 +62,14 @@ def main(argv: list[str] | None = None) -> int:
                               help="output path for fact_verification_report.json")
 
     # Subcommand: shooting-script
-    ss_parser = subparsers.add_parser("shooting-script", help="generate shooting_script.json and shooting_script.md artifacts")
+    ss_parser = subparsers.add_parser("shooting-script", parents=[obs_parser], help="generate shooting_script.json and shooting_script.md artifacts")
     ss_parser.add_argument("fixture", help="fixture name or episode_id in artifacts")
     ss_parser.add_argument("--artifacts", default="artifacts", help="artifacts directory")
     ss_parser.add_argument("--out-json", default=None, help="custom output path for shooting_script.json")
     ss_parser.add_argument("--out-md", default=None, help="custom output path for shooting_script.md")
 
     # Subcommand: revise
-    revise_parser = subparsers.add_parser("revise", help="propose or apply feedback-driven editorial revisions")
+    revise_parser = subparsers.add_parser("revise", parents=[obs_parser], help="propose or apply feedback-driven editorial revisions")
     revise_parser.add_argument("fixture", help="fixture name or episode_id in artifacts")
     revise_parser.add_argument("--feedback", help="free-text feedback string to propose revision")
     revise_parser.add_argument("--apply", help="proposal ID to apply to editorial_overrides.json")
@@ -67,7 +78,7 @@ def main(argv: list[str] | None = None) -> int:
     revise_parser.add_argument("--artifacts", default="artifacts", help="artifacts directory")
 
     # Subcommand: render
-    render_parser = subparsers.add_parser("render", help="render episode to mp4 video")
+    render_parser = subparsers.add_parser("render", parents=[obs_parser], help="render episode to mp4 video")
     render_parser.add_argument("fixture", help="fixture name or episode_id in artifacts")
     render_parser.add_argument("--artifacts", default="artifacts", help="artifacts directory")
     render_parser.add_argument("--out", default="out.mp4", help="output mp4 path")
@@ -83,15 +94,22 @@ def main(argv: list[str] | None = None) -> int:
                                help="emit audible tone pulses at beat boundaries (silence provider only)")
 
     # Subcommand: serve
-    serve_parser = subparsers.add_parser("serve", help="start local VideoTool Web UI dashboard")
+    serve_parser = subparsers.add_parser("serve", parents=[obs_parser], help="start local VideoTool Web UI dashboard")
     serve_parser.add_argument("--port", type=int, default=8080, help="server port (default: 8080)")
     serve_parser.add_argument("--host", default="127.0.0.1", help="server host (default: 127.0.0.1)")
     serve_parser.add_argument("--artifacts", default="artifacts", help="artifacts directory (default: artifacts)")
     serve_parser.add_argument("--open", action="store_true", help="open dashboard in default web browser")
 
+    # Subcommand: render-scene
+    scene_parser = subparsers.add_parser("render-scene", parents=[obs_parser], help="render a declarative scene YAML to mp4 video")
+    scene_parser.add_argument("scene_yaml", help="path to scene YAML file")
+    scene_parser.add_argument("--artifacts", default="artifacts", help="artifacts directory (default: artifacts)")
+    scene_parser.add_argument("--out", default="scene_out.mp4", help="output mp4 path")
+    scene_parser.add_argument("--fps", type=int, default=30, help="frame rate (default: 30)")
+
     # Subcommand: run (also default if fixture name passed directly)
-    run_parser = subparsers.add_parser("run", help="run planning pipeline")
-    run_parser.add_argument("fixture", choices=sorted(FIXTURES))
+    run_parser = subparsers.add_parser("run", parents=[obs_parser], help="run planning pipeline")
+    run_parser.add_argument("fixture", help="fixture name or episode_id in artifacts")
     run_parser.add_argument("--mode", default="final", choices=["draft", "final"])
     run_parser.add_argument("--artifacts", default="artifacts")
     run_parser.add_argument("--media-provider", default="fixture",
@@ -111,10 +129,21 @@ def main(argv: list[str] | None = None) -> int:
                             help="recompute every stage, ignoring cached artifacts")
 
     args_list = list(sys.argv[1:] if argv is None else argv)
-    if args_list and args_list[0] not in ("render", "run", "write-narration", "shooting-script", "revise", "serve", "-h", "--help"):
+    if args_list and args_list[0] not in ("render", "render-scene", "run", "write-narration", "shooting-script", "revise", "serve", "-h", "--help"):
         args_list.insert(0, "run")
 
     args = parser.parse_args(args_list)
+
+    # Initialize Pipeline Logger
+    from videotool.observability import LogFormat, init_logger
+    job_target = getattr(args, "fixture", None) or getattr(args, "topic", None) or getattr(args, "scene_yaml", None) or getattr(args, "command", "pipeline")
+    logger = init_logger(
+        job_id=str(job_target),
+        verbose=args.verbose,
+        trace=args.trace,
+        trace_ffmpeg=args.trace_ffmpeg,
+        log_format=LogFormat(args.log_format.upper()),
+    )
 
     if args.command == "serve":
         from videotool.web import run_web_server
@@ -280,7 +309,34 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
         except Exception as exc:
             import traceback
-            print(f"revise ERROR: {exc or repr(exc)}")
+    if args.command == "render-scene":
+        import yaml
+        from videotool.domain.scene_schema import SceneSpec
+        from videotool.render.scene_renderer import SceneRenderer
+
+        scene_path = Path(args.scene_yaml)
+        if not scene_path.exists():
+            print(f"render-scene ERROR: File not found: {scene_path}")
+            return 1
+
+        try:
+            yaml_content = yaml.safe_load(scene_path.read_text(encoding="utf-8"))
+            spec = SceneSpec.from_dict(yaml_content)
+            renderer = SceneRenderer(artifacts_dir=args.artifacts)
+            out_file = Path(args.out)
+            rendered_path = renderer.render_scene(spec, out_file, fps=args.fps)
+            print("================================================================================")
+            print("                REFERENCE-FAITHFUL SCENE RENDER COMPLETE")
+            print("================================================================================")
+            print(f"Scene Title:    {spec.scene.get('title', 'Historical Scene')}")
+            print(f"Duration:       {spec.project.get('duration_seconds', 12.0)}s")
+            print(f"Output Video:   {rendered_path}")
+            print(f"Asset Manifest: {Path(args.artifacts) / spec.project.get('id', 'scene_project') / 'media' / 'manifest.yaml'}")
+            print("================================================================================")
+            return 0
+        except Exception as exc:
+            import traceback
+            print(f"render-scene ERROR: {exc or repr(exc)}")
             traceback.print_exc()
             return 1
 
@@ -378,7 +434,22 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     # Planning pipeline run
-    data = FIXTURES[args.fixture]()
+    if args.fixture in FIXTURES:
+        data = FIXTURES[args.fixture]()
+    else:
+        store = ArtifactStore(args.artifacts)
+        narration_data = store.load(args.fixture, "narration")
+        from videotool.domain.narration import Narration
+        if narration_data:
+            narr = Narration.from_dict(narration_data)
+        else:
+            narr = Narration(text="Historical documentary episode.", words=[])
+        data = {
+            "episode_id": args.fixture,
+            "subject": args.fixture.replace("_", " ").title(),
+            "narration": narr,
+            "catalog": [],
+        }
     from videotool.editorial.media import MediaAcquisitionConfig
     from videotool.pipeline.policy import ExecutionPolicy
     media_config = MediaAcquisitionConfig(provider=args.media_provider)

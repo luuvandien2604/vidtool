@@ -224,14 +224,15 @@ def _norm_to_px_rect(norm_rect: dict[str, float], canvas_w: int, canvas_h: int) 
 
 
 def _extract_quote_or_label_text(node: dict[str, Any], beat: dict[str, Any]) -> str:
-    """Extract legible human text for a text-only node."""
+    """Extract legible human text for a text-only node, filtering out internal developer prompts."""
     refs = node.get("semantic_refs", [])
-    if refs and any(r.strip() for r in refs):
-        ref_text = refs[0].strip()
-        # If it's a descriptive phrase rather than a literal entity, format cleanly
-        if len(refs) > 1 and len(ref_text) < 25:
-            return ", ".join(refs)
-        return ref_text
+    if refs:
+        for ref in refs:
+            ref_str = str(ref).strip()
+            # Filter developer instructions/prompts
+            if not any(bad in ref_str.lower() for bad in ("present the", "identity metadata", "prompt", "debug", "placeholder", "portrait +")):
+                if len(ref_str) > 0 and len(ref_str) < 40:
+                    return ref_str
 
     text_role = node.get("text_role", "")
     role = node.get("role", "")
@@ -246,7 +247,16 @@ def _extract_quote_or_label_text(node: dict[str, Any], beat: dict[str, Any]) -> 
             words = narration.split()
             return " ".join(words[:6]) + "..."
 
-    return node.get("node_id", "").split(":")[-2].replace("_", " ").title()
+    # If node has label or entity name from beat, use it
+    entities = beat.get("entities", [])
+    if entities:
+        return str(entities[0])
+
+    raw_id = node.get("node_id", "").split(":")[-2] if ":" in node.get("node_id", "") else node.get("node_id", "")
+    clean = raw_id.replace("_", " ").title()
+    if any(bad in clean.lower() for bad in ("present the", "identity metadata", "prompt")):
+        return beat.get("subject", "Tư liệu lịch sử")
+    return clean
 
 
 COLOR_NAME_MAP: dict[str, str] = {
@@ -496,7 +506,8 @@ def build_episode_frame_plan(
                     elif text_role_val in ("DATE", "TIMELINE_NODE") or role == "TIMELINE_NODE":
                         style_name = "NodeTimeline"
 
-                    ass_line = generate_node_text_dialogue(
+                    # For paper_collage_hero beats, vector SVG handles typography cleanly; suppress duplicate ASS labels
+                    ass_line = "" if visual_family == "paper_collage_hero" else generate_node_text_dialogue(
                         text=text_str,
                         start_sec=start_sec,
                         end_sec=end_sec,
@@ -548,7 +559,105 @@ def build_episode_frame_plan(
                         color=accent,
                     ))
 
-        # SVG Overlay (connectors and text node cards/badges)
+        # Dynamic Vox Collage styling for editorial excellence
+        from videotool.render.vox_collage import VoxCollageData
+        chap_num = getattr(beat_info, "chapter", None) or segment.get("chapter") or ((len(beat_plans) // 2) + 1)
+        chap_str = f"CHƯƠNG {chap_num}"
+
+        # 1. Dynamic Headline
+        headline_raw = (
+            segment.get("headline")
+            or beat_info.get("headline")
+            or segment.get("title")
+            or (beat_intent.get("title") if isinstance(beat_intent, dict) else getattr(beat_intent, "title", None))
+        )
+        if isinstance(headline_raw, list):
+            headline_parts = [str(l).strip().upper() for l in headline_raw if str(l).strip()]
+        elif headline_raw:
+            headline_parts = [l.strip().upper() for l in str(headline_raw).splitlines() if l.strip()]
+            if len(headline_parts) == 1 and len(headline_parts[0]) > 18:
+                words = headline_parts[0].split()
+                mid = len(words) // 2
+                headline_parts = [" ".join(words[:mid]), " ".join(words[mid:])]
+        else:
+            entities = (beat_info.get("entities", []) if isinstance(beat_info, dict) else getattr(beat_info, "entities", [])) or []
+            subj = timeline.get("topic") or beat_info.get("subject") or timeline.get("episode_id", "").replace("_", " ")
+            e1 = str(entities[0]).upper() if entities else str(subj).upper()
+            if len(e1) > 22:
+                words = e1.split()
+                mid = max(1, len(words) // 2)
+                headline_parts = [" ".join(words[:mid]), " ".join(words[mid:])]
+            else:
+                headline_parts = [e1, "DIỄN BIẾN LỊCH SỬ"]
+
+        if not headline_parts:
+            headline_parts = [str(timeline.get("topic") or timeline.get("episode_id", "")).upper()[:22], "SỰ KIỆN TRỌNG TÂM"]
+
+        # 2. Dynamic Body Paragraph
+        body_txt = (
+            (beat_info.get("narration_text", "") if isinstance(beat_info, dict) else getattr(beat_info, "narration_text", ""))
+            or (beat_info.get("summary", "") if isinstance(beat_info, dict) else getattr(beat_info, "summary", ""))
+            or ""
+        )
+
+        # 3. Dynamic Fact Card (Date, Title, Subtitle)
+        dates = (beat_info.get("dates", []) if isinstance(beat_info, dict) else getattr(beat_info, "dates", [])) or []
+        entities = (beat_info.get("entities", []) if isinstance(beat_info, dict) else getattr(beat_info, "entities", [])) or []
+        date_m = dates[0] if dates else ""
+        date_t = entities[0].upper() if entities else timeline.get("episode_id", "").replace("_", " ").upper()
+        date_sub = entities[1].upper() if len(entities) > 1 else "TƯ LIỆU LỊCH SỬ"
+
+        # 4. Dynamic Quote & Emphasis Keywords
+        q_text = ""
+        q_emp = []
+        if beat_intent and isinstance(beat_intent, dict) and "quote" in beat_intent:
+            q_text = beat_intent["quote"].get("text", "")
+            q_emp = beat_intent["quote"].get("emphasis", [])
+        elif hasattr(beat_intent, "quote") and getattr(beat_intent, "quote"):
+            q_data = getattr(beat_intent, "quote")
+            q_text = q_data.get("text", "") if isinstance(q_data, dict) else getattr(q_data, "text", "")
+            q_emp = q_data.get("emphasis", []) if isinstance(q_data, dict) else getattr(q_data, "emphasis", [])
+
+        if not q_text and text_elements:
+            for te in text_elements:
+                if te.style_name == "NodeQuote":
+                    q_text = te.text
+                    q_emp = [e for e in entities if e.lower() in q_text.lower()]
+                    break
+
+        if not q_text and body_txt:
+            sentences = [s.strip() for s in re.split(r"[.!?]+", body_txt) if len(s.strip()) > 10]
+            if sentences:
+                q_text = sentences[0]
+                words = q_text.split()
+                q_emp = [w for w in words if len(w) > 4][:2]
+
+        insets_info = []
+        for me in media_elements:
+            if me.role != "HERO":
+                insets_info.append({
+                    "x": float(me.bounds_px.x),
+                    "y": float(me.bounds_px.y),
+                    "w": float(me.bounds_px.width),
+                    "h": float(me.bounds_px.height),
+                    "taped": True,
+                })
+
+        collage_data = VoxCollageData(
+            beat_id=beat_id,
+            chapter_text=chap_str,
+            headline_lines=headline_parts,
+            body_paragraph=body_txt,
+            date_milestone=date_m,
+            date_title=date_t,
+            date_subtitle=date_sub,
+            quote_text=q_text,
+            quote_emphasis=q_emp,
+            insets=insets_info,
+            accent_color=accent,
+        )
+
+        # SVG Overlay (connectors, text node cards/badges, or full paper collage)
         svg_overlay = generate_svg_overlay(
             connectors=connectors,
             text_elements=text_elements,
@@ -556,6 +665,7 @@ def build_episode_frame_plan(
             canvas_h=canvas_h,
             accent_color=accent,
             visual_family=visual_family,
+            collage_data=collage_data,
         )
 
         beat_plans.append(BeatFramePlan(

@@ -160,6 +160,8 @@ class GeometryPolicy:
                     else "SPATIAL_FOCUS")
         if visual_family == "full_frame_cinematic":
             return "OVERLAY_HIERARCHY"
+        if visual_family == "paper_collage_hero":
+            return "LEFT_TO_RIGHT"
         corpus = " ".join(geometry_character).lower()
         if any(hint in corpus for hint in ("right-to-left", "rtl", "right anchored")):
             return "RIGHT_TO_LEFT"

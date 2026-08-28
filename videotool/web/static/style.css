@@ -745,10 +745,19 @@ body {
 
 .term-cmd { color: var(--vox-yellow); font-weight: 700; }
 .term-info { color: #cbd5e1; }
-.term-success { color: var(--vox-green); }
-.term-error { color: var(--vox-coral); }
-.term-warn { color: var(--vox-gold); }
+.term-success { color: #10b981; font-weight: 600; }
+.term-error { color: #f87171; font-weight: 600; }
+.term-warn { color: #fbbf24; }
 .term-system { color: var(--text-dim); }
+.term-ai-req { color: #38bdf8; font-weight: 600; }
+.term-ai-res { color: #a78bfa; font-weight: 600; }
+.term-decision { color: #fbbf24; font-weight: 700; }
+.term-domain { color: #34d399; font-weight: 600; }
+.term-asset { color: #fb923c; }
+.term-ffmpeg { color: #94a3b8; font-family: monospace; font-size: 0.82rem; }
+.term-render { color: #f472b6; }
+.term-stage { color: var(--vox-yellow); font-weight: 800; }
+.term-perf { color: #6ee7b7; font-weight: 600; }
 
 /* ==========================================================================
    Badges & Colors

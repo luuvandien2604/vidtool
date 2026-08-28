@@ -133,14 +133,23 @@ STRATEGY_CATALOG: dict[str, StrategyDefinition] = {
           ("QUOTE", "ATMOSPHERE", "SUMMARY"),
           "Full-bleed image with one editorial line of text.",
           (0.1, 0.4), 0.8),
+        # --- paper collage hero -----------------------------------------
+        S("paper_collage_opener", "paper_collage_hero",
+          ("ESTABLISHING_CONTEXT", "HOOK", "SUMMARY", "LOCATION_INTRODUCTION"),
+          "Editorial torn-paper sidebar with chapter badge, context text and hero backdrop.",
+          (0.2, 0.8), 0.88),
+        S("editorial_collage_quote", "paper_collage_hero",
+          ("QUOTE", "TURNING_POINT", "EVIDENCE"),
+          "Torn-paper editorial layout anchoring prominent keyword-highlighted quote banner.",
+          (0.3, 0.9), 0.86),
     ]
 }
 
 # Primary candidate pools per semantic function (planner may add cross-function
 # candidates when beat entities justify them).
 FUNCTION_CANDIDATES: dict[SemanticFunction, list[str]] = {
-    SemanticFunction.HOOK: ["cinematic_hold", "full_frame_archival", "silhouette_to_archive_reveal"],
-    SemanticFunction.ESTABLISHING_CONTEXT: ["region_map", "document_stack", "causal_network", "linear_timeline"],
+    SemanticFunction.HOOK: ["paper_collage_opener", "cinematic_hold", "full_frame_archival", "silhouette_to_archive_reveal"],
+    SemanticFunction.ESTABLISHING_CONTEXT: ["paper_collage_opener", "region_map", "document_stack", "causal_network", "linear_timeline"],
     SemanticFunction.CHARACTER_INTRODUCTION: ["archival_portrait", "portrait_plus_document", "portrait_plus_location", "portrait_plus_quote", "full_frame_archival", "cinematic_hold"],
     SemanticFunction.LOCATION_INTRODUCTION: ["region_map", "map_plus_archival", "portrait_plus_location"],
     SemanticFunction.CHRONOLOGY: ["linear_timeline", "vertical_sequence", "branching_timeline", "route_map"],
@@ -150,15 +159,15 @@ FUNCTION_CANDIDATES: dict[SemanticFunction, list[str]] = {
     SemanticFunction.PROCESS: ["route_map", "vertical_sequence", "linear_timeline", "object_relationship_diagram"],
     SemanticFunction.TECHNICAL_EXPLANATION: ["object_relationship_diagram", "clip_plus_annotation"],
     SemanticFunction.ESCALATION: ["migration_flow_map", "document_stack", "causal_network", "vertical_sequence"],
-    SemanticFunction.TURNING_POINT: ["silhouette_to_archive_reveal", "full_frame_archival", "cinematic_hold"],
+    SemanticFunction.TURNING_POINT: ["editorial_collage_quote", "silhouette_to_archive_reveal", "full_frame_archival", "cinematic_hold"],
     SemanticFunction.CONSEQUENCE: ["cause_effect_pair", "cinematic_hold", "map_plus_archival"],
-    SemanticFunction.QUOTE: ["document_plus_quote", "portrait_plus_quote", "single_document_focus", "cinematic_plus_quote"],
+    SemanticFunction.QUOTE: ["editorial_collage_quote", "document_plus_quote", "portrait_plus_quote", "single_document_focus", "cinematic_plus_quote"],
     SemanticFunction.DATA: ["migration_flow_map", "linear_timeline", "document_stack"],
     SemanticFunction.GEOGRAPHIC_MOVEMENT: ["route_map", "migration_flow_map", "map_plus_archival", "vertical_sequence"],
     SemanticFunction.ATMOSPHERE: ["cinematic_hold", "full_frame_archival", "region_map"],
     SemanticFunction.REVEAL: ["silhouette_to_archive_reveal", "single_document_focus", "cinematic_hold"],
     SemanticFunction.TRANSITION: ["region_map", "cinematic_hold"],
-    SemanticFunction.SUMMARY: ["cinematic_plus_quote", "cinematic_hold", "full_frame_archival"],
+    SemanticFunction.SUMMARY: ["paper_collage_opener", "cinematic_plus_quote", "cinematic_hold", "full_frame_archival"],
 }
 
 # transition compatibility between previous function family and candidate
@@ -170,6 +179,7 @@ _TRANSITION_AFFINITY: dict[str, set[str]] = {
     "time_like": {"chronological_timeline"},
     "logic_like": {"causal_network"},
     "mood_like": {"full_frame_cinematic"},
+    "editorial_like": {"paper_collage_hero"},
 }
 
 

@@ -236,6 +236,14 @@ class PipelineRunner:
         self._repairs.append({"stage": stage, "issue": issue, "action": action})
 
     def run(self, ep: EpisodeInput) -> PipelineResult:
+        from videotool.observability import get_logger
+        logger = get_logger()
+        logger.pipeline_start(
+            title=f"Episode '{ep.episode_id}'",
+            input_desc=f"{len(ep.narration.text.split())} words | Mode: {self.mode} | Media: {self.policy.editorial_ai_provider}",
+            output_path=f"artifacts/{ep.episode_id}/pipeline_manifest.json",
+        )
+
         res = PipelineResult(
             episode_id=ep.episode_id,
             manifest={"stages": {}, "repairs": []},
@@ -533,6 +541,11 @@ class PipelineRunner:
         }
         res.ok = all(v["ok"] for v in res.validation.values())
 
+        # Log domain validation results
+        for v_name, v_rep in res.validation.items():
+            err_msg = f"Errors: {', '.join(v_rep['errors'])}" if v_rep['errors'] else ""
+            logger.log_domain_validation(f"Domain Validation [{v_name}]", v_rep["ok"], err_msg)
+
         # Populate statuses and repairs from context
         self._statuses = dict(ctx._statuses)
         self._repairs = list(ctx._repairs)
@@ -541,4 +554,12 @@ class PipelineRunner:
         res.manifest["feasibility"] = res.feasibility["adjustments"]
         res.manifest["ok"] = res.ok
         self.store.save(ep.episode_id, "pipeline_manifest", res.manifest)
+
+        # Output final pipeline execution summary
+        logger.pipeline_summary(
+            result="SUCCESS" if res.ok else "FAILED",
+            output_file=f"artifacts/{ep.episode_id}/pipeline_manifest.json",
+            total_beats=len(res.beats),
+            total_duration_sec=res.timeline.get("total_duration_sec", 0.0) if isinstance(res.timeline, dict) else 0.0,
+        )
         return res

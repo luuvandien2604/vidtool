@@ -14,18 +14,24 @@ class VoxColors:
     # Backgrounds
     BG_CREAM: str = "#FAF8F5"
     BG_CREAM_WARM: str = "#F3EFE6"
+    BG_PAPER_LIGHT: str = "#FAF8F5"
+    BG_PAPER_AGED: str = "#E7E0D2"
+    BG_PAPER_DARK: str = "#161616"
     BG_DARK_SLATE: str = "#14171F"
     BG_DARK_CARD: str = "#1C202B"
     BG_DARK_OVERLAY: str = "#0F121A"
 
     # Accents & Highlights
     ACCENT_YELLOW: str = "#FFD100"       # Signature Vox yellow / gold
+    ACCENT_GOLD: str = "#E1B400"         # Deep documentary gold accent
     ACCENT_MUSTARD: str = "#E5B800"
     ACCENT_BLUE: str = "#3B82F6"          # Secondary regional / structural accent
     ACCENT_BLUE_DEEP: str = "#2563EB"
     ACCENT_CORAL: str = "#E11D48"         # Emphasis / point of interest
     ACCENT_CORAL_DARK: str = "#BE123C"
     ACCENT_SAGE: str = "#10B981"          # Positive / verified indicator
+    MAP_BLUE: str = "#24384A"             # Primary territory / allied map zone
+    MAP_RED: str = "#6B302D"              # Opposing territory / eastern map zone
 
     # Typography & Text
     TEXT_PRIMARY_DARK: str = "#111827"   # Near-black on light backgrounds
@@ -34,11 +40,13 @@ class VoxColors:
     TEXT_PRIMARY_LIGHT: str = "#F9FAFB"  # Crisp white on dark backgrounds
     TEXT_SECONDARY_LIGHT: str = "#D1D5DB"
     TEXT_MUTED_LIGHT: str = "#9CA3AF"
+    TEXT_PAPER_CREAM: str = "#E7E0D2"
 
     # Borders, Outlines & Shadows
     BORDER_LIGHT: str = "#E5E7EB"
     BORDER_DARK: str = "#374151"
     BORDER_ACCENT: str = "#FFD100"
+    BORDER_GOLD: str = "#E1B400"
     SHADOW_COLOR: str = "#000000"
 
 
@@ -50,14 +58,17 @@ class VoxTypography:
     FONT_FAMILY_MONO: str = "DejaVu Sans Mono, Liberation Mono, monospace"
 
     # Font Sizes in Pixels (for 1080p canvas)
+    SIZE_TITLE_XL: int = 44
     SIZE_TITLE_LG: int = 36
     SIZE_TITLE_MD: int = 30
     SIZE_TITLE_SM: int = 24
     SIZE_VALUE_LG: int = 28
     SIZE_VALUE_MD: int = 22
     SIZE_BODY: int = 20
+    SIZE_BODY_SM: int = 17
     SIZE_LABEL_UPPER: int = 15
     SIZE_BADGE: int = 14
+    SIZE_CAPTION: int = 12
     SIZE_CAPTION: int = 12
 
     # Font Weights

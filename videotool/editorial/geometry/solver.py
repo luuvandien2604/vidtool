@@ -120,6 +120,8 @@ class GeometrySolver:
         if family == "archival_subject":
             return [["portrait_cluster", "stack_labels"],
                     ["portrait_cluster_mirror", "stack_labels"]]
+        if family == "paper_collage_hero":
+            return [["collage_hero_layout"], ["collage_hero_layout_insets"]]
         return [["hero_overlay"], ["hero_overlay_asymmetric"]]
 
     def _place(self, plan: GeometryPlan, chain: list[str]) -> list[SolvedPlacement]:
@@ -140,7 +142,29 @@ class GeometrySolver:
             return self._document(plan, chain)
         if "portrait_cluster" in chain:
             return self._portrait(plan, chain, mirror="mirror" in chain[0])
+        if "collage_hero_layout" in chain[0]:
+            return self._collage(plan, chain)
         return self._hero(plan, chain)
+
+    def _collage(self, plan: GeometryPlan, chain: list[str]) -> list[SolvedPlacement]:
+        placements = []
+        for index, node in enumerate(plan.nodes):
+            if node.role == VisualRole.HERO:
+                placements.append(self._placement(
+                    node, 0.05, 0.05, 0.90, 0.74, 0, chain, CanvasRegion.FULL))
+            elif node.role in {VisualRole.MAP, VisualRole.DOCUMENT, VisualRole.SUPPORT}:
+                placements.append(self._placement(
+                    node, 0.60, 0.08, 0.34, 0.36, 1, chain, CanvasRegion.TOP_RIGHT))
+            elif node.role in {VisualRole.DATE, VisualRole.DATA}:
+                placements.append(self._placement(
+                    node, 0.04, 0.68, 0.32, 0.10, 2, chain, CanvasRegion.BOTTOM_LEFT))
+            elif node.role == VisualRole.QUOTE:
+                placements.append(self._placement(
+                    node, 0.22, 0.72, 0.58, 0.09, 3, chain, CanvasRegion.BOTTOM))
+            else:
+                placements.append(self._placement(
+                    node, 0.04, 0.12 + 0.10 * index, 0.30, 0.10, index + 2, chain, CanvasRegion.LEFT))
+        return self._ensure_all(plan, placements, chain)
 
     def _row(self, plan, nodes, chain) -> list[SolvedPlacement]:
         count = max(1, len(nodes))

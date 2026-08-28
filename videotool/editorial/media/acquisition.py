@@ -29,21 +29,29 @@ from videotool.providers.media.base import MediaProvider, ProviderError
 ACQUISITION_SERVICE_VERSION = 2  # 2: isolated search + complete trace semantics
 
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 def search_candidates(plans: list[MediaSearchPlan], provider: MediaProvider,
                       max_per_query: int,
                       diagnostics: dict[str, list[dict]] | None = None
                       ) -> dict[str, list[MediaCandidate]]:
-    """Run every plan's queries through the provider (the only network step).
+    """Run every plan's queries through the provider concurrently in parallel.
 
     Failure-isolated per query: one ProviderError marks that query failed
-    (recorded by the caller in the candidates artifact) but never aborts
-    the stage; candidates already found are preserved.
+    but never aborts the stage; candidates already found are preserved.
     """
     by_req: dict[str, list[MediaCandidate]] = {}
-    for plan in plans:
+
+    def _search_single_plan(plan: MediaSearchPlan) -> tuple[str, list[MediaCandidate], list[dict]]:
         seen: dict[str, MediaCandidate] = {}
         query_results: list[dict] = []
         for query in [plan.primary_query] + plan.alternate_queries:
+            if not query or not query.strip():
+                continue
             try:
                 found = provider.search(query, max_per_query)
             except (ProviderError, TimeoutError) as exc:
@@ -59,9 +67,26 @@ def search_candidates(plans: list[MediaSearchPlan], provider: MediaProvider,
                                   "candidate_count": len(found)})
             for cand in found:
                 seen.setdefault(cand.candidate_id, cand)
-        by_req[plan.requirement_id] = list(seen.values())
-        if diagnostics is not None:
-            diagnostics[plan.requirement_id] = query_results
+        return plan.requirement_id, list(seen.values()), query_results
+
+    if len(plans) <= 1:
+        for plan in plans:
+            req_id, cands, diag = _search_single_plan(plan)
+            by_req[req_id] = cands
+            if diagnostics is not None:
+                diagnostics[req_id] = diag
+    else:
+        with ThreadPoolExecutor(max_workers=min(8, len(plans))) as executor:
+            futures = [executor.submit(_search_single_plan, plan) for plan in plans]
+            for fut in as_completed(futures):
+                try:
+                    req_id, cands, diag = fut.result()
+                    by_req[req_id] = cands
+                    if diagnostics is not None:
+                        diagnostics[req_id] = diag
+                except Exception as exc:
+                    logger.warning(f"Error in candidate search worker: {exc}")
+
     return by_req
 
 
