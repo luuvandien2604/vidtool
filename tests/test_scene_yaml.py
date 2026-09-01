@@ -1,9 +1,9 @@
 """Tests for Scene YAML Schema, Archival Resolver, Manifest, and Modular Collage Engine."""
 from __future__ import annotations
 
+import json
 import tempfile
 from pathlib import Path
-import yaml
 import pytest
 
 from videotool.domain.scene_schema import SceneSpec
@@ -22,63 +22,77 @@ from videotool.render.collage import (
 from videotool.render.scene_renderer import SceneRenderer
 
 
-SAMPLE_YAML = """
-version: "2.0"
-project:
-  id: test_scene_project
-  title: "Bức tường Berlin"
-  language: vi
-  resolution: {width: 1920, height: 1080}
-  duration_seconds: 1.0
-
-scene:
-  title: "Đêm Berlin bị phong tỏa"
-  historical_date: "1961-08-13"
-  narration:
-    text: "Sau Thế chiến II, nước Đức bị chia cắt thành Đông Đức và Tây Đức."
-
-style:
-  palette:
-    paper: "#E7E0D2"
-    charcoal: "#161616"
-    yellow: "#E1B400"
-    red: "#8C3932"
-    blue: "#33495A"
-
-license_policy:
-  license_url: "https://creativecommons.org/licenses/by-sa/3.0/de/deed.en"
-
-assets:
-  - id: test_hero
-    type: archival_photo
-    role: primary_visual
-    source:
-      title: "Bundesarchiv Bild 173-1321"
-      page_url: "https://commons.wikimedia.org/wiki/File:Bundesarchiv_Bild_173-1321,_Berlin,_Mauerbau.jpg"
-    license:
-      name: "CC BY-SA 3.0 DE"
-      url: "https://creativecommons.org/licenses/by-sa/3.0/de/deed.en"
-      attribution: "Bundesarchiv, Bild 173-1321 / CC-BY-SA 3.0"
-
-layout:
-  main_visual: {x: 34, y: 0, width: 58, height: 78}
-
-graphics:
-  chapter_label: {text: "CHƯƠNG 1"}
-  headline: {text: "BỐI CẢNH RA ĐỜI\\nBỨC TƯỜNG BERLIN"}
-  date_card: {date: "13/08/1961", title: "BỨC TƯỜNG BERLIN", subtitle: "CHÍNH THỨC ĐƯỢC XÂY DỰNG"}
-  quote: {text: "Một bức tường không chỉ bằng bê tông, mà bằng nỗi sợ hãi.", emphasis: ["nỗi sợ hãi"]}
-
-timeline:
-  - {time: "0.0-1.0", action: "Fade from black."}
-
-credits:
-  - "Bundesarchiv / CC-BY-SA 3.0 DE"
-"""
+SAMPLE_DICT = {
+    "version": "2.0",
+    "project": {
+        "id": "test_scene_project",
+        "title": "Bức tường Berlin",
+        "language": "vi",
+        "resolution": {"width": 1920, "height": 1080},
+        "duration_seconds": 1.0,
+    },
+    "scene": {
+        "title": "Đêm Berlin bị phong tỏa",
+        "historical_date": "1961-08-13",
+        "narration": {
+            "text": "Sau Thế chiến II, nước Đức bị chia cắt thành Đông Đức và Tây Đức.",
+        },
+    },
+    "style": {
+        "palette": {
+            "paper": "#E7E0D2",
+            "charcoal": "#161616",
+            "yellow": "#E1B400",
+            "red": "#8C3932",
+            "blue": "#33495A",
+        },
+    },
+    "license_policy": {
+        "license_url": "https://creativecommons.org/licenses/by-sa/3.0/de/deed.en",
+    },
+    "assets": [
+        {
+            "id": "test_hero",
+            "type": "archival_photo",
+            "role": "primary_visual",
+            "source": {
+                "title": "Bundesarchiv Bild 173-1321",
+                "page_url": "https://commons.wikimedia.org/wiki/File:Bundesarchiv_Bild_173-1321,_Berlin,_Mauerbau.jpg",
+            },
+            "license": {
+                "name": "CC BY-SA 3.0 DE",
+                "url": "https://creativecommons.org/licenses/by-sa/3.0/de/deed.en",
+                "attribution": "Bundesarchiv, Bild 173-1321 / CC-BY-SA 3.0",
+            },
+        },
+    ],
+    "layout": {
+        "main_visual": {"x": 34, "y": 0, "width": 58, "height": 78},
+    },
+    "graphics": {
+        "chapter_label": {"text": "CHƯƠNG 1"},
+        "headline": {"text": "BỐI CẢNH RA ĐỜI\nBỨC TƯỜNG BERLIN"},
+        "date_card": {
+            "date": "13/08/1961",
+            "title": "BỨC TƯỜNG BERLIN",
+            "subtitle": "CHÍNH THỨC ĐƯỢC XÂY DỰNG",
+        },
+        "quote": {
+            "text": "Một bức tường không chỉ bằng bê tông, mà bằng nỗi sợ hãi.",
+            "emphasis": ["nỗi sợ hãi"],
+        },
+    },
+    "timeline": [
+        {"time": "0.0-1.0", "action": "Fade from black."},
+    ],
+    "credits": [
+        "Bundesarchiv / CC-BY-SA 3.0 DE",
+    ],
+}
 
 
 def test_scene_schema_parsing():
-    data = yaml.safe_load(SAMPLE_YAML)
+    data = SAMPLE_DICT
     spec = SceneSpec.from_dict(data)
     assert spec.version == "2.0"
     assert spec.project["id"] == "test_scene_project"
@@ -121,12 +135,12 @@ def test_vietnamese_diacritics_in_quote():
 
 def test_archival_resolver_manifest_generation():
     with tempfile.TemporaryDirectory() as tmpdir:
-        data = yaml.safe_load(SAMPLE_YAML)
+        data = SAMPLE_DICT
         spec = SceneSpec.from_dict(data)
         resolver = ArchivalResolver(tmpdir)
         manifest_path = resolver.resolve_scene_assets(spec, "test_proj")
         assert manifest_path.exists()
-        manifest_content = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+        manifest_content = json.loads(manifest_path.read_text(encoding="utf-8"))
         assert manifest_content["version"] == "2.0"
         assert len(manifest_content["assets"]) >= 1
         record = manifest_content["assets"][0]

@@ -15,8 +15,6 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from videotool.domain.scene_schema import SceneAsset, SceneSpec
 
 USER_AGENT = "VideoToolDocumentaryEngine/2.0 (https://github.com/videotool; contact@videotool.org)"
@@ -172,12 +170,12 @@ class ArchivalResolver:
             )
             manifest_records.append(asdict(record))
 
-        manifest_path = media_dir / "manifest.yaml"
+        manifest_path = media_dir / "manifest.json"
         manifest_data = {
             "version": "2.0",
             "project_id": project_name,
             "provenance_standard": "Reference-Faithful Editorial Archival Manifest",
             "assets": manifest_records,
         }
-        manifest_path.write_text(yaml.dump(manifest_data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+        manifest_path.write_text(json.dumps(manifest_data, indent=2, ensure_ascii=False), encoding="utf-8")
         return manifest_path

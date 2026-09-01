@@ -310,7 +310,6 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:
             import traceback
     if args.command == "render-scene":
-        import yaml
         from videotool.domain.scene_schema import SceneSpec
         from videotool.render.scene_renderer import SceneRenderer
 
@@ -320,8 +319,19 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
         try:
-            yaml_content = yaml.safe_load(scene_path.read_text(encoding="utf-8"))
-            spec = SceneSpec.from_dict(yaml_content)
+            if scene_path.suffix.lower() == ".json":
+                import json
+                spec_content = json.loads(scene_path.read_text(encoding="utf-8"))
+            else:
+                try:
+                    import yaml
+                except ImportError as err:
+                    raise ImportError(
+                        "pyyaml is required to parse YAML scene files. "
+                        "Please install it via `pip install pyyaml` or pass a JSON scene file."
+                    ) from err
+                spec_content = yaml.safe_load(scene_path.read_text(encoding="utf-8"))
+            spec = SceneSpec.from_dict(spec_content)
             renderer = SceneRenderer(artifacts_dir=args.artifacts)
             out_file = Path(args.out)
             rendered_path = renderer.render_scene(spec, out_file, fps=args.fps)
@@ -331,7 +341,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Scene Title:    {spec.scene.get('title', 'Historical Scene')}")
             print(f"Duration:       {spec.project.get('duration_seconds', 12.0)}s")
             print(f"Output Video:   {rendered_path}")
-            print(f"Asset Manifest: {Path(args.artifacts) / spec.project.get('id', 'scene_project') / 'media' / 'manifest.yaml'}")
+            print(f"Asset Manifest: {Path(args.artifacts) / spec.project.get('id', 'scene_project') / 'media' / 'manifest.json'}")
             print("================================================================================")
             return 0
         except Exception as exc:
