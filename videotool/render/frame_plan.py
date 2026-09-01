@@ -288,6 +288,49 @@ def _resolve_hex_color(val: str | None, default: str = "#E6C280") -> str:
     return default
 
 
+def _lookup_motion_event(
+    events_map: dict[str, dict],
+    node_id: str,
+    source_layer_id: str | None = None,
+    role: str | None = None,
+    semantic_refs: list[str] | None = None,
+) -> dict | None:
+    """Find a matching motion event by layer ID, node ID, role suffix, or semantic references."""
+    # 1. Exact match by source_layer_id
+    if source_layer_id and source_layer_id in events_map:
+        return events_map[source_layer_id]
+    # 2. Exact match by node_id
+    if node_id and node_id in events_map:
+        return events_map[node_id]
+    # 3. Match by role suffix (e.g. comp_b1_hero, layer_hero, b1_document, hero)
+    if role:
+        role_lower = role.lower()
+        for k, v in events_map.items():
+            k_lower = k.lower()
+            if (
+                k_lower == role_lower
+                or k_lower.endswith(f"_{role_lower}")
+                or f"_{role_lower}_" in k_lower
+            ):
+                return v
+    # 4. Match by semantic_refs or substring
+    if semantic_refs:
+        for ref in semantic_refs:
+            if not ref:
+                continue
+            ref_lower = ref.lower()
+            for k, v in events_map.items():
+                if ref_lower in k.lower():
+                    return v
+    # 5. Check if node_id is substring of any layer_id or vice versa
+    if node_id:
+        node_id_lower = node_id.lower()
+        for k, v in events_map.items():
+            if node_id_lower in k.lower() or k.lower() in node_id_lower:
+                return v
+    return None
+
+
 def build_episode_frame_plan(
     timeline: dict,
     geometry_plans: list[dict],
@@ -352,11 +395,20 @@ def build_episode_frame_plan(
         beat_info = beat_by_id.get(beat_id, {})
         beat_intent = intents_by_beat.get(beat_id)
 
-        # Build motion events map by layer
+        # Build motion events map by layer and event kind
+        entrance_by_layer: dict[str, dict] = {}
         emphasis_by_layer: dict[str, dict] = {}
+        exit_by_layer: dict[str, dict] = {}
+
         for ev in comp_motion.get("events", []):
-            if ev.get("kind") == "EMPHASIS":
-                emphasis_by_layer[ev["layer_id"]] = ev
+            layer_id = ev.get("layer_id", "")
+            kind = ev.get("kind", "")
+            if kind in ("ENTRANCE", "entrance"):
+                entrance_by_layer[layer_id] = ev
+            elif kind in ("EMPHASIS", "emphasis"):
+                emphasis_by_layer[layer_id] = ev
+            elif kind in ("EXIT", "exit"):
+                exit_by_layer[layer_id] = ev
 
         media_elements: list[MediaRenderElement] = []
         text_elements: list[TextRenderElement] = []
@@ -376,6 +428,27 @@ def build_episode_frame_plan(
                 role = node.get("role", "HERO")
                 asset_id = node.get("asset_id")
 
+                src_layer = node.get("source_layer_id", node_id)
+                sem_refs = node.get("semantic_refs", [])
+
+                ent_ev = _lookup_motion_event(entrance_by_layer, node_id=node_id, source_layer_id=src_layer, role=role, semantic_refs=sem_refs)
+                emp_ev = _lookup_motion_event(emphasis_by_layer, node_id=node_id, source_layer_id=src_layer, role=role, semantic_refs=sem_refs)
+                exit_ev = _lookup_motion_event(exit_by_layer, node_id=node_id, source_layer_id=src_layer, role=role, semantic_refs=sem_refs)
+
+                if ent_ev is not None:
+                    node_entrance_sec = float(ent_ev.get("start_sec", start_sec))
+                elif node.get("enter_at") is not None:
+                    node_entrance_sec = start_sec + duration * float(node.get("enter_at", 0.0))
+                else:
+                    node_entrance_sec = start_sec
+                node_entrance_sec = max(start_sec, min(end_sec, node_entrance_sec))
+
+                if exit_ev is not None:
+                    node_exit_sec = float(exit_ev.get("start_sec", end_sec))
+                else:
+                    node_exit_sec = end_sec
+                node_exit_sec = max(node_entrance_sec, min(end_sec, node_exit_sec))
+
                 # Is this an image/asset-backed node?
                 is_media_role = (
                     role in {VisualRole.HERO.value, VisualRole.PORTRAIT.value,
@@ -390,10 +463,6 @@ def build_episode_frame_plan(
                     checksum = asset.get("checksum") if asset else None
                     is_placeholder = asset.get("is_placeholder", False) if asset else True
                     desc = asset.get("description", "") if asset else (node.get("semantic_refs", [""])[0] if node.get("semantic_refs") else "")
-
-                    # Check for emphasis motion event on this node or source layer
-                    src_layer = node.get("source_layer_id", node_id)
-                    emp_ev = emphasis_by_layer.get(src_layer) or emphasis_by_layer.get(node_id)
 
                     camera_motion = "STABLE"
                     emp_start = None
@@ -435,8 +504,8 @@ def build_episode_frame_plan(
                         z_index=z_index,
                         bounds_norm=bounds_norm,
                         bounds_px=bounds_px,
-                        entrance_sec=start_sec,
-                        exit_sec=end_sec,
+                        entrance_sec=node_entrance_sec,
+                        exit_sec=node_exit_sec,
                         description=desc,
                         emphasis_start_sec=emp_start,
                         emphasis_end_sec=emp_end,
@@ -509,8 +578,8 @@ def build_episode_frame_plan(
                     # For paper_collage_hero beats, vector SVG handles typography cleanly; suppress duplicate ASS labels
                     ass_line = "" if visual_family == "paper_collage_hero" else generate_node_text_dialogue(
                         text=text_str,
-                        start_sec=start_sec,
-                        end_sec=end_sec,
+                        start_sec=node_entrance_sec,
+                        end_sec=node_exit_sec,
                         center_x_px=bounds_px.center_x,
                         center_y_px=bounds_px.center_y,
                         style_name=style_name,
@@ -525,8 +594,8 @@ def build_episode_frame_plan(
                         z_index=z_index,
                         bounds_norm=bounds_norm,
                         bounds_px=bounds_px,
-                        entrance_sec=start_sec,
-                        exit_sec=end_sec,
+                        entrance_sec=node_entrance_sec,
+                        exit_sec=node_exit_sec,
                         style_name=style_name,
                         ass_dialogue=ass_line,
                     ))

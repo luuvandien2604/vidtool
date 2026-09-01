@@ -6,8 +6,10 @@ from .art_direction import EpisodeArtDirection
 from .composition import (CompositionLayer, EntranceStep, LayerType, MotionStyle,
                           Relationship, VisualComposition)
 from .visual_history import HistoryEntry, VisualHistory, derive_signature
-from .motion import (CompositionMotionPlan, EventKind, MotionEvent, MotionPlan,
-                     TransitionCategory, TransitionPlan)
+from .motion import (CompositionMotionPlan, DEFAULT_ROLE_MOTION_MAP,
+                     EventKind, MotionEvent, MotionPlan, MotionPreset,
+                     TransitionCategory, TransitionPlan,
+                     get_default_motion_preset)
 from .assets import AssetRequirement, MediaAsset
 from .strategy import ScoredCandidate, SelectionRecord, StrategyDefinition
 from .geometry import (CanvasRegion, CanvasSpec, ConstraintStrength,
@@ -25,6 +27,7 @@ __all__ = [
     "Relationship", "VisualComposition",
     "HistoryEntry", "VisualHistory", "derive_signature",
     "CompositionMotionPlan", "EventKind", "MotionEvent", "MotionPlan",
+    "MotionPreset", "DEFAULT_ROLE_MOTION_MAP", "get_default_motion_preset",
     "TransitionCategory", "TransitionPlan",
     "AssetRequirement", "MediaAsset",
     "ScoredCandidate", "SelectionRecord", "StrategyDefinition",

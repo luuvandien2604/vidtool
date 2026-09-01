@@ -140,9 +140,18 @@ class FFmpegRenderer(Renderer):
             else:
                 overlay_src = scaled_label
 
+            # Per-beat relative entrance and exit for progressive reveal
+            start_rel = max(0.0, m_elem.entrance_sec - beat.start_sec)
+            end_rel = min(duration, m_elem.exit_sec - beat.start_sec)
+
             next_layer = f"[v_layer_{input_idx}]"
+            if start_rel > 0.001 or end_rel < duration - 0.001:
+                enable_clause = f":enable='between(t,{start_rel:.3f},{end_rel:.3f})'"
+            else:
+                enable_clause = ""
+
             filter_chains.append(
-                f"{current_layer}{overlay_src}overlay={px_x}:{px_y}:eof_action=repeat{next_layer}"
+                f"{current_layer}{overlay_src}overlay={px_x}:{px_y}{enable_clause}:eof_action=repeat{next_layer}"
             )
             current_layer = next_layer
             input_idx += 1

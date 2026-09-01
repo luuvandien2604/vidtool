@@ -29,6 +29,55 @@ class EventKind(str, Enum):
     EXIT = "EXIT"
 
 
+class MotionPreset(str, Enum):
+    MASK_REVEAL = "MASK_REVEAL"
+    PAPER_SLIDE = "PAPER_SLIDE"
+    SNAP_IN = "SNAP_IN"
+    UNDERLINE_REVEAL = "UNDERLINE_REVEAL"
+    DOCUMENT_UNFOLD = "DOCUMENT_UNFOLD"
+    ROUTE_DRAW = "ROUTE_DRAW"
+    MARKER_LINE = "MARKER_LINE"
+    PIN_CONNECT = "PIN_CONNECT"
+    TYPE_ON = "TYPE_ON"
+    PLACE_PHOTO = "PLACE_PHOTO"
+    SCALE_EMPHASIS = "SCALE_EMPHASIS"
+    CUT_IN = "CUT_IN"
+    COLLAPSE = "COLLAPSE"
+    SLIDE_OUT = "SLIDE_OUT"
+    DISSOLVE = "DISSOLVE"
+    FADE_IN = "FADE_IN"
+    FADE_OUT = "FADE_OUT"
+    STABLE = "STABLE"
+
+
+# Default motion preset mapping based on semantic role
+DEFAULT_ROLE_MOTION_MAP: dict[str, str] = {
+    "hero": MotionPreset.MASK_REVEAL.value,
+    "portrait": MotionPreset.PLACE_PHOTO.value,
+    "document": MotionPreset.DOCUMENT_UNFOLD.value,
+    "map": MotionPreset.PLACE_PHOTO.value,
+    "archival_image": MotionPreset.MASK_REVEAL.value,
+    "support": MotionPreset.PAPER_SLIDE.value,
+    "label": MotionPreset.UNDERLINE_REVEAL.value,
+    "caption": MotionPreset.UNDERLINE_REVEAL.value,
+    "headline": MotionPreset.UNDERLINE_REVEAL.value,
+    "fact_card": MotionPreset.SNAP_IN.value,
+    "timeline_node": MotionPreset.SNAP_IN.value,
+    "quote": MotionPreset.TYPE_ON.value,
+    "connector": MotionPreset.ROUTE_DRAW.value,
+    "line": MotionPreset.MARKER_LINE.value,
+    "texture": MotionPreset.CUT_IN.value,
+}
+
+
+def get_default_motion_preset(role: str, is_media: bool = True) -> str:
+    """Resolve semantic role to standard motion preset."""
+    role_key = (role or "").lower().strip()
+    if role_key in DEFAULT_ROLE_MOTION_MAP:
+        return DEFAULT_ROLE_MOTION_MAP[role_key]
+    return MotionPreset.MASK_REVEAL.value if is_media else MotionPreset.SNAP_IN.value
+
+
 @dataclass
 class MotionEvent:
     layer_id: str
