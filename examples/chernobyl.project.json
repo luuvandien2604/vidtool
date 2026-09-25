@@ -1,0 +1,229 @@
+{
+  "id": "chernobyl-az5",
+  "topic": "Thảm họa Chernobyl - nút AZ-5",
+  "title": "CHERNOBYL: AZ-5",
+  "lang": "vi",
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "scenes": [
+    {
+      "id": "intro",
+      "type": "intro",
+      "startFrame": 0,
+      "durationInFrames": 165,
+      "transition": "fade",
+      "narration": "Chernobyl, bài thử nghiệm chết người tại lò phản ứng số bốn.",
+      "audio": "audio/scene-intro.mp3",
+      "captions": true,
+      "props": {
+        "kicker": "CHERNOBYL | THE FATAL TEST AT REACTOR NUMBER 4",
+        "title": "AZ-5",
+        "subtitle": "Nút dừng khẩn cấp đã gây ra thảm họa như thế nào",
+        "date": "26 APR 1986",
+        "time": "01:23:40",
+        "hazard": true
+      }
+    },
+    {
+      "id": "context",
+      "type": "bullets",
+      "startFrame": 165,
+      "durationInFrames": 195,
+      "transition": "slide",
+      "narration": "Để hiểu thảm họa, trước tiên cần nhìn lại bối cảnh của lò phản ứng RBMK.",
+      "audio": "audio/scene-context.mp3",
+      "captions": true,
+      "props": {
+        "heading": "BỐI CẢNH",
+        "items": [
+          "Lò phản ứng RBMK-1000 sử dụng thanh điều khiển bằng bo-cacbua.",
+          "Đầu thanh điều khiển được bọc bằng than chì (graphite).",
+          "RBMK có khiếm khuyết thiết kế: hệ số rỗng hơi dương.",
+          "Đêm 26/4/1986: bài thử nghiệm tua-bin được thực hiện ở công suất thấp."
+        ],
+        "numbered": true
+      }
+    },
+    {
+      "id": "diagram",
+      "type": "diagram",
+      "startFrame": 360,
+      "durationInFrames": 240,
+      "transition": "fade",
+      "narration": "Khi nhấn AZ-5, các thanh điều khiển lao xuống lõi. Nhưng đầu thanh chì đã đẩy độ phản ứng lên cao.",
+      "audio": "audio/scene-diagram.mp3",
+      "captions": true,
+      "props": {
+        "heading": "RBMK REACTOR (Simplified view)",
+        "kind": "reactor",
+        "caption": "FIG. 01 — CẤU TẠO LÕI LÒ RBMK-1000",
+        "nodes": [
+          {
+            "label": "CONTROL RODS",
+            "description": "Thanh điều khiển bằng bo-cacbua.",
+            "x": 82,
+            "y": 22
+          },
+          {
+            "label": "GRAPHITE TIPS",
+            "description": "Đầu thanh chì làm tăng độ phản ứng trong tích tắc.",
+            "x": 88,
+            "y": 40
+          },
+          {
+            "label": "REACTOR CORE",
+            "description": "Nơi xảy ra phản ứng dây chuyền.",
+            "x": 74,
+            "y": 68
+          }
+        ]
+      }
+    },
+    {
+      "id": "comparison",
+      "type": "comparison",
+      "startFrame": 600,
+      "durationInFrames": 255,
+      "transition": "fade",
+      "narration": "Đáng lẽ phản ứng phải chậm lại. Nhưng thực tế, công suất lại bùng nổ.",
+      "audio": "audio/scene-comparison.mp3",
+      "captions": true,
+      "props": {
+        "headingA": "WHAT SHOULD HAVE HAPPENED",
+        "itemsA": [
+          "Các thanh điều khiển rơi xuống",
+          "Hấp thụ neutron tăng lên",
+          "Phản ứng chậm dần",
+          "Lò phản ứng tắt an toàn"
+        ],
+        "headingB": "WHAT ACTUALLY HAPPENED",
+        "itemsB": [
+          "Đầu thanh chì đi vào lõi",
+          "Độ phản ứng tăng vọt",
+          "Công suất bùng nổ",
+          "Phản ứng mất kiểm soát"
+        ],
+        "showSchematic": true
+      }
+    },
+    {
+      "id": "chart",
+      "type": "chart",
+      "startFrame": 855,
+      "durationInFrames": 240,
+      "transition": "fade",
+      "narration": "Biểu đồ công suất ghi lại khoảnh khắc mất kiểm soát: từ ba trăm megawatt vọt lên hàng nghìn megawatt chỉ trong vài giây.",
+      "audio": "audio/scene-chart.mp3",
+      "captions": true,
+      "props": {
+        "heading": "REACTOR POWER",
+        "xLabels": [
+          "01:23",
+          "01:24",
+          "01:25",
+          "01:26",
+          "01:27",
+          "01:28"
+        ],
+        "yTicks": [
+          0,
+          500,
+          1000,
+          1500,
+          2000
+        ],
+        "data": [
+          900,
+          800,
+          700,
+          300,
+          1200,
+          2000
+        ],
+        "annotation": "Power spikes",
+        "eventLabel": "UNCONTROLLED REACTION"
+      }
+    },
+    {
+      "id": "photo",
+      "type": "photo",
+      "startFrame": 1095,
+      "durationInFrames": 195,
+      "transition": "slide",
+      "narration": "Lò phản ứng số bốn sau vụ nổ: mái nhà bị thổi bay, lõi phơi mình giữa bầu trời đêm.",
+      "audio": "audio/scene-photo.mp3",
+      "captions": true,
+      "props": {
+        "stamp": "REACTOR 4",
+        "stampDate": "26 APR 1986",
+        "caption": "Nhà máy điện hạt nhân Chernobyl sau vụ nổ lò số 4 — thảm họa hạt nhân tồi tệ nhất lịch sử."
+      }
+    },
+    {
+      "id": "summary",
+      "type": "summary",
+      "startFrame": 1290,
+      "durationInFrames": 210,
+      "transition": "fade",
+      "narration": "AZ-5 không phải nút cứu nguy. Với RBMK, nó là ngòi nổ của thảm họa.",
+      "audio": "audio/scene-summary.mp3",
+      "captions": true,
+      "props": {
+        "heading": "BÀI HỌC",
+        "points": [
+          "Thiết kế không an toàn có thể biến hệ thống bảo vệ thành ngòi nổ.",
+          "Văn hóa che giấu sự cố khiến hậu quả nhân lên gấp bội.",
+          "An toàn hạt nhân đòi hỏi minh bạch và chuẩn mực quốc tế."
+        ]
+      }
+    }
+  ],
+  "audio": {
+    "voiceover": [
+      {
+        "sceneId": "intro",
+        "file": "audio/scene-intro.mp3",
+        "startFrame": 0,
+        "durationInFrames": 165
+      },
+      {
+        "sceneId": "context",
+        "file": "audio/scene-context.mp3",
+        "startFrame": 165,
+        "durationInFrames": 195
+      },
+      {
+        "sceneId": "diagram",
+        "file": "audio/scene-diagram.mp3",
+        "startFrame": 360,
+        "durationInFrames": 240
+      },
+      {
+        "sceneId": "comparison",
+        "file": "audio/scene-comparison.mp3",
+        "startFrame": 600,
+        "durationInFrames": 255
+      },
+      {
+        "sceneId": "chart",
+        "file": "audio/scene-chart.mp3",
+        "startFrame": 855,
+        "durationInFrames": 240
+      },
+      {
+        "sceneId": "photo",
+        "file": "audio/scene-photo.mp3",
+        "startFrame": 1095,
+        "durationInFrames": 195
+      },
+      {
+        "sceneId": "summary",
+        "file": "audio/scene-summary.mp3",
+        "startFrame": 1290,
+        "durationInFrames": 210
+      }
+    ],
+    "music": null
+  }
+}

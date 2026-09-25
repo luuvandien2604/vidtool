@@ -1,0 +1,33 @@
+{
+  "name": "documentary-video-tool",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Automated YouTube documentary-style video generator (Remotion + TypeScript)",
+  "scripts": {
+    "generate": "tsx src/cli/generate.ts",
+    "tts": "tsx src/cli/tts.ts",
+    "render": "tsx src/cli/render.ts",
+    "preview": "remotion studio src/index.tsx",
+    "editor": "vite",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/bundler": "^4.0.242",
+    "@remotion/cli": "^4.0.242",
+    "@remotion/player": "^4.0.242",
+    "@remotion/renderer": "^4.0.242",
+    "node-edge-tts": "^1.2.9",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.242",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0"
+  }
+}

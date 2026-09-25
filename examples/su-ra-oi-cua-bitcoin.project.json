@@ -1,0 +1,228 @@
+{
+  "id": "su-ra-oi-cua-bitcoin",
+  "topic": "Sự ra đời của Bitcoin",
+  "title": "SỰ RA ĐỜI CỦA — SỰ RA ĐỜI CỦA BITCOIN | HỒ SƠ SỰ KIỆN",
+  "lang": "vi",
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "scenes": [
+    {
+      "id": "intro",
+      "type": "intro",
+      "startFrame": 0,
+      "durationInFrames": 180,
+      "transition": "fade",
+      "narration": "Sự ra đời của Bitcoin. Một bước ngoặt đã để lại dấu ấn sâu đậm trong lịch sử.",
+      "audio": "audio/scene-intro.mp3",
+      "captions": true,
+      "props": {
+        "kicker": "SỰ RA ĐỜI CỦA BITCOIN | HỒ SƠ SỰ KIỆN",
+        "title": "SỰ RA ĐỜI CỦA",
+        "subtitle": "Câu chuyện đằng sau sự kiện đã làm thay đổi mọi thứ",
+        "date": "25 / 09 / 2026",
+        "hazard": true
+      }
+    },
+    {
+      "id": "context",
+      "type": "bullets",
+      "startFrame": 180,
+      "durationInFrames": 164,
+      "transition": "slide",
+      "narration": "Để hiểu điều gì đã xảy ra, trước tiên cần nhìn lại toàn bộ bối cảnh.",
+      "audio": "audio/scene-context.mp3",
+      "captions": true,
+      "props": {
+        "heading": "BỐI CẢNH",
+        "items": [
+          "Những yếu tố then chốt dẫn đến sự kiện.",
+          "Con người, hệ thống và các quyết định liên quan.",
+          "Vì sao khoảnh khắc này quan trọng trong bức tranh toàn cảnh.",
+          "Những điều đã được biết — và những điều bị bỏ qua."
+        ],
+        "numbered": true
+      }
+    },
+    {
+      "id": "diagram",
+      "type": "diagram",
+      "startFrame": 344,
+      "durationInFrames": 182,
+      "transition": "fade",
+      "narration": "Sơ đồ cho thấy hệ thống được thiết kế để vận hành ra sao — và nó đã gãy ở đâu.",
+      "audio": "audio/scene-diagram.mp3",
+      "captions": true,
+      "props": {
+        "heading": "CƠ CHẾ HOẠT ĐỘNG",
+        "kind": "reactor",
+        "caption": "FIG. 01 — SƠ ĐỒ ĐƠN GIẢN HÓA",
+        "nodes": [
+          {
+            "label": "ĐẦU VÀO",
+            "description": "Yếu tố kích hoạt khởi đầu cho mọi chuyện.",
+            "x": 82,
+            "y": 20
+          },
+          {
+            "label": "CƠ CHẾ",
+            "description": "Hệ thống ở trung tâm của sự kiện.",
+            "x": 79,
+            "y": 42
+          },
+          {
+            "label": "ĐIỂM GÃY",
+            "description": "Nơi mọi thứ trượt khỏi tầm kiểm soát.",
+            "x": 76,
+            "y": 64
+          }
+        ]
+      }
+    },
+    {
+      "id": "comparison",
+      "type": "comparison",
+      "startFrame": 526,
+      "durationInFrames": 184,
+      "transition": "fade",
+      "narration": "Đáng lẽ mọi chuyện phải diễn ra như thế này — nhưng thực tế lại hoàn toàn khác.",
+      "audio": "audio/scene-comparison.mp3",
+      "captions": true,
+      "props": {
+        "headingA": "KỊCH BẢN DỰ KIẾN",
+        "itemsA": [
+          "Kế hoạch diễn ra đúng như dự tính",
+          "Hệ thống phản ứng trong giới hạn",
+          "Rủi ro được kiểm soát",
+          "Tình hình ổn định trở lại"
+        ],
+        "headingB": "DIỄN BIẾN THỰC TẾ",
+        "itemsB": [
+          "Kế hoạch sụp đổ dưới áp lực",
+          "Hệ thống vượt quá giới hạn",
+          "Rủi ro xoáy thành vòng xoáy",
+          "Tình hình leo thang mất kiểm soát"
+        ],
+        "showSchematic": true
+      }
+    },
+    {
+      "id": "chart",
+      "type": "chart",
+      "startFrame": 710,
+      "durationInFrames": 154,
+      "transition": "fade",
+      "narration": "Biểu đồ cho thấy khoảnh khắc tình hình vượt khỏi tầm kiểm soát.",
+      "audio": "audio/scene-chart.mp3",
+      "captions": true,
+      "props": {
+        "heading": "DIỄN BIẾN LEO THANG",
+        "xLabels": [
+          "T0",
+          "T1",
+          "T2",
+          "T3",
+          "T4",
+          "T5"
+        ],
+        "yTicks": [
+          0,
+          25,
+          50,
+          75,
+          100
+        ],
+        "data": [
+          20,
+          25,
+          30,
+          45,
+          80,
+          100
+        ],
+        "annotation": "Điểm bùng phát",
+        "eventLabel": "ĐIỂM KHÔNG THỂ QUAY LẠI"
+      }
+    },
+    {
+      "id": "photo",
+      "type": "photo",
+      "startFrame": 864,
+      "durationInFrames": 150,
+      "transition": "slide",
+      "narration": "Chính tại nơi này — mọi chuyện đã xảy ra.",
+      "audio": "audio/scene-photo.mp3",
+      "captions": true,
+      "props": {
+        "stamp": "HIỆN TRƯỜNG",
+        "stampDate": "25 / 09 / 2026",
+        "caption": "Nơi lịch sử được viết nên."
+      }
+    },
+    {
+      "id": "summary",
+      "type": "summary",
+      "startFrame": 1014,
+      "durationInFrames": 150,
+      "transition": "fade",
+      "narration": "Ba bài học mà câu chuyện này để lại cho hậu thế.",
+      "audio": "audio/scene-summary.mp3",
+      "captions": true,
+      "props": {
+        "heading": "BÀI HỌC",
+        "points": [
+          "Những sai sót nhỏ có thể dồn lại thành thảm họa.",
+          "Minh bạch là tuyến phòng thủ đầu tiên.",
+          "Hiểu quá khứ để bảo vệ tương lai."
+        ]
+      }
+    }
+  ],
+  "audio": {
+    "voiceover": [
+      {
+        "sceneId": "intro",
+        "file": "audio/scene-intro.mp3",
+        "startFrame": 0,
+        "durationInFrames": 180
+      },
+      {
+        "sceneId": "context",
+        "file": "audio/scene-context.mp3",
+        "startFrame": 180,
+        "durationInFrames": 164
+      },
+      {
+        "sceneId": "diagram",
+        "file": "audio/scene-diagram.mp3",
+        "startFrame": 344,
+        "durationInFrames": 182
+      },
+      {
+        "sceneId": "comparison",
+        "file": "audio/scene-comparison.mp3",
+        "startFrame": 526,
+        "durationInFrames": 184
+      },
+      {
+        "sceneId": "chart",
+        "file": "audio/scene-chart.mp3",
+        "startFrame": 710,
+        "durationInFrames": 154
+      },
+      {
+        "sceneId": "photo",
+        "file": "audio/scene-photo.mp3",
+        "startFrame": 864,
+        "durationInFrames": 150
+      },
+      {
+        "sceneId": "summary",
+        "file": "audio/scene-summary.mp3",
+        "startFrame": 1014,
+        "durationInFrames": 150
+      }
+    ],
+    "music": null
+  }
+}
