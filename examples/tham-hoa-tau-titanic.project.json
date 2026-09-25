@@ -14,7 +14,7 @@
       "durationInFrames": 179,
       "transition": "fade",
       "narration": "Thảm họa tàu Titanic. Một bước ngoặt đã để lại dấu ấn sâu đậm trong lịch sử.",
-      "audio": "audio/scene-intro.mp3",
+      "audio": "audio/tham-hoa-tau-titanic/scene-intro.mp3",
       "captions": true,
       "props": {
         "kicker": "THẢM HỌA TÀU TITANIC | HỒ SƠ SỰ KIỆN",
@@ -31,7 +31,7 @@
       "durationInFrames": 164,
       "transition": "slide",
       "narration": "Để hiểu điều gì đã xảy ra, trước tiên cần nhìn lại toàn bộ bối cảnh.",
-      "audio": "audio/scene-context.mp3",
+      "audio": "audio/tham-hoa-tau-titanic/scene-context.mp3",
       "captions": true,
       "props": {
         "heading": "BỐI CẢNH",
@@ -51,7 +51,7 @@
       "durationInFrames": 182,
       "transition": "fade",
       "narration": "Sơ đồ cho thấy hệ thống được thiết kế để vận hành ra sao — và nó đã gãy ở đâu.",
-      "audio": "audio/scene-diagram.mp3",
+      "audio": "audio/tham-hoa-tau-titanic/scene-diagram.mp3",
       "captions": true,
       "props": {
         "heading": "CƠ CHẾ HOẠT ĐỘNG",
@@ -86,7 +86,7 @@
       "durationInFrames": 184,
       "transition": "fade",
       "narration": "Đáng lẽ mọi chuyện phải diễn ra như thế này — nhưng thực tế lại hoàn toàn khác.",
-      "audio": "audio/scene-comparison.mp3",
+      "audio": "audio/tham-hoa-tau-titanic/scene-comparison.mp3",
       "captions": true,
       "props": {
         "headingA": "KỊCH BẢN DỰ KIẾN",
@@ -113,7 +113,7 @@
       "durationInFrames": 154,
       "transition": "fade",
       "narration": "Biểu đồ cho thấy khoảnh khắc tình hình vượt khỏi tầm kiểm soát.",
-      "audio": "audio/scene-chart.mp3",
+      "audio": "audio/tham-hoa-tau-titanic/scene-chart.mp3",
       "captions": true,
       "props": {
         "heading": "DIỄN BIẾN LEO THANG",
@@ -151,7 +151,7 @@
       "durationInFrames": 150,
       "transition": "slide",
       "narration": "Chính tại nơi này — mọi chuyện đã xảy ra.",
-      "audio": "audio/scene-photo.mp3",
+      "audio": "audio/tham-hoa-tau-titanic/scene-photo.mp3",
       "captions": true,
       "props": {
         "stamp": "HIỆN TRƯỜNG",
@@ -166,7 +166,7 @@
       "durationInFrames": 150,
       "transition": "fade",
       "narration": "Ba bài học mà câu chuyện này để lại cho hậu thế.",
-      "audio": "audio/scene-summary.mp3",
+      "audio": "audio/tham-hoa-tau-titanic/scene-summary.mp3",
       "captions": true,
       "props": {
         "heading": "BÀI HỌC",
@@ -182,43 +182,43 @@
     "voiceover": [
       {
         "sceneId": "intro",
-        "file": "audio/scene-intro.mp3",
+        "file": "audio/tham-hoa-tau-titanic/scene-intro.mp3",
         "startFrame": 0,
         "durationInFrames": 179
       },
       {
         "sceneId": "context",
-        "file": "audio/scene-context.mp3",
+        "file": "audio/tham-hoa-tau-titanic/scene-context.mp3",
         "startFrame": 179,
         "durationInFrames": 164
       },
       {
         "sceneId": "diagram",
-        "file": "audio/scene-diagram.mp3",
+        "file": "audio/tham-hoa-tau-titanic/scene-diagram.mp3",
         "startFrame": 343,
         "durationInFrames": 182
       },
       {
         "sceneId": "comparison",
-        "file": "audio/scene-comparison.mp3",
+        "file": "audio/tham-hoa-tau-titanic/scene-comparison.mp3",
         "startFrame": 525,
         "durationInFrames": 184
       },
       {
         "sceneId": "chart",
-        "file": "audio/scene-chart.mp3",
+        "file": "audio/tham-hoa-tau-titanic/scene-chart.mp3",
         "startFrame": 709,
         "durationInFrames": 154
       },
       {
         "sceneId": "photo",
-        "file": "audio/scene-photo.mp3",
+        "file": "audio/tham-hoa-tau-titanic/scene-photo.mp3",
         "startFrame": 863,
         "durationInFrames": 150
       },
       {
         "sceneId": "summary",
-        "file": "audio/scene-summary.mp3",
+        "file": "audio/tham-hoa-tau-titanic/scene-summary.mp3",
         "startFrame": 1013,
         "durationInFrames": 150
       }

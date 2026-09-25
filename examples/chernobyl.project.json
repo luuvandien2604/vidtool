@@ -14,7 +14,7 @@
       "durationInFrames": 165,
       "transition": "fade",
       "narration": "Chernobyl, bài thử nghiệm chết người tại lò phản ứng số bốn.",
-      "audio": "audio/scene-intro.mp3",
+      "audio": "audio/chernobyl-az5/scene-intro.mp3",
       "captions": true,
       "props": {
         "kicker": "CHERNOBYL | THE FATAL TEST AT REACTOR NUMBER 4",
@@ -32,7 +32,7 @@
       "durationInFrames": 195,
       "transition": "slide",
       "narration": "Để hiểu thảm họa, trước tiên cần nhìn lại bối cảnh của lò phản ứng RBMK.",
-      "audio": "audio/scene-context.mp3",
+      "audio": "audio/chernobyl-az5/scene-context.mp3",
       "captions": true,
       "props": {
         "heading": "BỐI CẢNH",
@@ -52,7 +52,7 @@
       "durationInFrames": 240,
       "transition": "fade",
       "narration": "Khi nhấn AZ-5, các thanh điều khiển lao xuống lõi. Nhưng đầu thanh chì đã đẩy độ phản ứng lên cao.",
-      "audio": "audio/scene-diagram.mp3",
+      "audio": "audio/chernobyl-az5/scene-diagram.mp3",
       "captions": true,
       "props": {
         "heading": "RBMK REACTOR (Simplified view)",
@@ -87,7 +87,7 @@
       "durationInFrames": 255,
       "transition": "fade",
       "narration": "Đáng lẽ phản ứng phải chậm lại. Nhưng thực tế, công suất lại bùng nổ.",
-      "audio": "audio/scene-comparison.mp3",
+      "audio": "audio/chernobyl-az5/scene-comparison.mp3",
       "captions": true,
       "props": {
         "headingA": "WHAT SHOULD HAVE HAPPENED",
@@ -114,7 +114,7 @@
       "durationInFrames": 240,
       "transition": "fade",
       "narration": "Biểu đồ công suất ghi lại khoảnh khắc mất kiểm soát: từ ba trăm megawatt vọt lên hàng nghìn megawatt chỉ trong vài giây.",
-      "audio": "audio/scene-chart.mp3",
+      "audio": "audio/chernobyl-az5/scene-chart.mp3",
       "captions": true,
       "props": {
         "heading": "REACTOR POWER",
@@ -152,7 +152,7 @@
       "durationInFrames": 195,
       "transition": "slide",
       "narration": "Lò phản ứng số bốn sau vụ nổ: mái nhà bị thổi bay, lõi phơi mình giữa bầu trời đêm.",
-      "audio": "audio/scene-photo.mp3",
+      "audio": "audio/chernobyl-az5/scene-photo.mp3",
       "captions": true,
       "props": {
         "stamp": "REACTOR 4",
@@ -167,7 +167,7 @@
       "durationInFrames": 210,
       "transition": "fade",
       "narration": "AZ-5 không phải nút cứu nguy. Với RBMK, nó là ngòi nổ của thảm họa.",
-      "audio": "audio/scene-summary.mp3",
+      "audio": "audio/chernobyl-az5/scene-summary.mp3",
       "captions": true,
       "props": {
         "heading": "BÀI HỌC",
@@ -183,43 +183,43 @@
     "voiceover": [
       {
         "sceneId": "intro",
-        "file": "audio/scene-intro.mp3",
+        "file": "audio/chernobyl-az5/scene-intro.mp3",
         "startFrame": 0,
         "durationInFrames": 165
       },
       {
         "sceneId": "context",
-        "file": "audio/scene-context.mp3",
+        "file": "audio/chernobyl-az5/scene-context.mp3",
         "startFrame": 165,
         "durationInFrames": 195
       },
       {
         "sceneId": "diagram",
-        "file": "audio/scene-diagram.mp3",
+        "file": "audio/chernobyl-az5/scene-diagram.mp3",
         "startFrame": 360,
         "durationInFrames": 240
       },
       {
         "sceneId": "comparison",
-        "file": "audio/scene-comparison.mp3",
+        "file": "audio/chernobyl-az5/scene-comparison.mp3",
         "startFrame": 600,
         "durationInFrames": 255
       },
       {
         "sceneId": "chart",
-        "file": "audio/scene-chart.mp3",
+        "file": "audio/chernobyl-az5/scene-chart.mp3",
         "startFrame": 855,
         "durationInFrames": 240
       },
       {
         "sceneId": "photo",
-        "file": "audio/scene-photo.mp3",
+        "file": "audio/chernobyl-az5/scene-photo.mp3",
         "startFrame": 1095,
         "durationInFrames": 195
       },
       {
         "sceneId": "summary",
-        "file": "audio/scene-summary.mp3",
+        "file": "audio/chernobyl-az5/scene-summary.mp3",
         "startFrame": 1290,
         "durationInFrames": 210
       }

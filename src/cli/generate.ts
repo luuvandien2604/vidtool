@@ -107,6 +107,7 @@ function buildScene(
   transition: Scene["transition"],
   lang: string,
   fps: number,
+  projectId: string,
 ): Scene {
   const seconds = estimateNarrationSeconds(narration, lang);
   const base = {
@@ -116,7 +117,8 @@ function buildScene(
     durationInFrames: Math.round(seconds * fps),
     transition,
     narration,
-    audio: `audio/scene-${id}.mp3`,
+    // Namespaced under projectId so different projects never share audio files.
+    audio: `audio/${projectId}/scene-${id}.mp3`,
     captions: true,
   } as Scene;
   return { ...base, props } as Scene;
@@ -132,21 +134,31 @@ function contentToProject(content: unknown, topic: string, args: CliArgs): Proje
     .replace(/(^-|-$)/g, "")
     .slice(0, 40) || "video";
 
+  // Curry buildScene with the resolved project slug so all audio paths are
+  // namespaced: public/audio/<projectId>/scene-<id>.mp3
+  const mk = (
+    id: string,
+    type: Scene["type"],
+    props: Scene["props"],
+    narration: string,
+    transition: Scene["transition"],
+  ) => buildScene(id, type, props, narration, transition, args.lang, args.fps, slug);
+
   const scenes: Scene[] = [
-    buildScene("intro", "intro", {
+    mk("intro", "intro", {
       kicker: c.kicker,
       title: c.title,
       subtitle: c.subtitle,
       date: c.date,
       time: c.time,
       hazard: true,
-    }, c.introNarration, "fade", args.lang, args.fps),
-    buildScene("context", "bullets", {
+    }, c.introNarration, "fade"),
+    mk("context", "bullets", {
       heading: c.context.heading,
       items: c.context.items,
       numbered: true,
-    }, c.contextNarration, "slide", args.lang, args.fps),
-    buildScene("diagram", "diagram", {
+    }, c.contextNarration, "slide"),
+    mk("diagram", "diagram", {
       heading: c.diagram.heading,
       kind: "reactor" as const,
       caption: c.diagram.caption,
@@ -156,31 +168,31 @@ function contentToProject(content: unknown, topic: string, args: CliArgs): Proje
         x: 82 - i * 3,
         y: 20 + i * 22,
       })),
-    }, c.diagramNarration, "fade", args.lang, args.fps),
-    buildScene("comparison", "comparison", {
+    }, c.diagramNarration, "fade"),
+    mk("comparison", "comparison", {
       headingA: c.comparison.headingA,
       itemsA: c.comparison.itemsA,
       headingB: c.comparison.headingB,
       itemsB: c.comparison.itemsB,
       showSchematic: true,
-    }, c.comparisonNarration, "fade", args.lang, args.fps),
-    buildScene("chart", "chart", {
+    }, c.comparisonNarration, "fade"),
+    mk("chart", "chart", {
       heading: c.chart.heading,
       xLabels: c.chart.xLabels,
       yTicks: c.chart.yTicks,
       data: c.chart.data,
       annotation: c.chart.annotation,
       eventLabel: c.chart.eventLabel,
-    }, c.chartNarration, "fade", args.lang, args.fps),
-    buildScene("photo", "photo", {
+    }, c.chartNarration, "fade"),
+    mk("photo", "photo", {
       stamp: c.photo.stamp,
       stampDate: c.photo.stampDate,
       caption: c.photo.caption,
-    }, c.photoNarration, "slide", args.lang, args.fps),
-    buildScene("summary", "summary", {
+    }, c.photoNarration, "slide"),
+    mk("summary", "summary", {
       heading: c.summary.heading,
       points: c.summary.points,
-    }, c.summaryNarration, "fade", args.lang, args.fps),
+    }, c.summaryNarration, "fade"),
   ];
 
   const project: Project = {
